@@ -1,0 +1,76 @@
+nlayers 5
+nmodules 5
+mod_layer 0 1 2 3 4
+#mod_layer 2 2 2 0 0 0 3 3 3 1 1 1
+# X, Y, and Z offsets are given in mm:
+# Original offsets:
+#mod_x0                0         1.60147         4.17865        -9.92959         4.23595
+#mod_y0                0        0.329773          3.4954        -1.30259       -0.247515
+#mod_z0                0          130.65         266.021         401.139         536.461
+#mod_ax                0      0.00359479    -0.000781899      0.00426776     7.02952e-05
+#mod_ay                0        0.011693       0.0194589       0.0323365       0.0405228
+#mod_az                0     0.000679043      0.00420306     0.000829211      0.00439853
+#mod_x0                0          1.5362         4.12189        -9.93437         4.29396
+#mod_y0                0        0.347522         3.52839        -1.30268       -0.270161
+#mod_z0                0         131.434         266.581           401.2         535.815
+#mod_ax                0               0               0               0               0
+#mod_ay                0               0               0               0               0
+#mod_az                0               0               0               0               0
+#mod_x0       -0.0143223         1.51585         4.21974        -10.0418         4.32387
+#mod_y0        0.0358095        0.395341         3.30802        -1.09333       -0.305561
+#mod_z0        -0.165991         131.488         266.868         401.139         535.757
+#mod_ax      -0.00141474      0.00114175      0.00107378    -0.000504712     0.000187664
+#mod_ay      -0.00231489      0.00134007      0.00272536     0.000127171    -0.000627464
+#mod_az     -0.000345962     -0.00054399      0.00288758     -0.00260868     0.000622553
+#
+mod_x0       -0.0179731         1.51411         4.23674        -10.0586         4.32651
+mod_y0        0.0410867        0.396764          3.2803        -1.06683       -0.307913
+mod_z0        -0.218068         131.485         266.995         401.076         535.775
+mod_ax      -0.00186631      0.00171306     0.000134027     0.000875001     0.000100031
+mod_ay      -0.00318558       0.0017029       0.0034053     0.000584954    -0.000389627
+mod_az     -0.000393724    -0.000560714      0.00325332     -0.00294609     0.000666287
+#
+# going forward, more of the module geometry is configurable: "u" = X and "v" = Y
+mod_nstripsu  1536 1536 1536 1536 1536 
+mod_nstripsv  1280 1280 1280 1280 1280
+# for the "u = X, v = Y" convention, the planeID = 1, 0, for u, v
+mod_vplaneID 1 1 1 1 1 
+mod_uplaneID 0 0 0 0 0 
+mod_ustrip_pitch 0.4 0.4 0.4 0.4 0.4 
+mod_vstrip_pitch 0.4 0.4 0.4 0.4 0.4 
+mod_Lx 614.4 614.4 614.4 614.4 614.4 
+mod_Ly 512.0 512.0 512.0 512.0 512.0
+# if +Z = along particle motion, and +X = left to right, then +Y needs to be vertically down
+# u strip angle relative to X axis: under u = X, v = Y convention, uangle = 0 and vangle=90
+mod_uangle 0.0 0.0 0.0 0.0 0.0 
+# Setting the "V" strip angle to -90 degrees amounts to reversing the direction of the Y axis (I hope):
+mod_vangle -90.0 -90.0 -90.0 -90.0 -90.0 
+eventdisplay 0
+clustersigma 0.4
+clustertau 54.0
+varyclustersigma 0
+varyclustertau 0
+maxstripsperclusterX 10
+maxstripsperclusterY 10
+# thresholds for "pruning" strips and clusters (not necessarily discarding):
+maxcor_threshold  -1.1
+stripcor_threshold -1.1
+clustcor_threshold -1.1
+clust2D_ADCasymcut 1.1
+clust2D_dTcut 1000.0
+threshold_maxsample 0.0
+threshold_stripsum 100.0
+threshold_clustersum 0.0
+#threshold_maxsample 75.0
+#threshold_stripsum  300.0
+#threshold_clustersum 300.0
+trackchi2cut 1000.0
+trackmaxradius 30.0 # mm, max radial separation between hit and projection of track from previous layers to add hit to track.
+trackmaxslopeX 1.0
+trackmaxslopeY 1.0
+#maxADCXYthreshold 1000.0
+tstripcut_nsigma 5.0
+#NMAX 100000000
+NMAX 2000000
+#clustmap_fname HallA_allevents_with_moments.root
+endconfig
