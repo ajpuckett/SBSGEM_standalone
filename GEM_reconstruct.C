@@ -567,7 +567,7 @@ int find_clusters_by_module( moduledata_t mod_data, clusterdata_t &clust_data ){
       //y strips by "pixel index"
       vector<int> iyhit;
       
-      int iymax = mod_data.Bestmatch_xstrips[ixmax];
+      //int iymax = mod_data.Bestmatch_xstrips[ixmax];
       //pixelused[pixelmax] = true;
       stripxused[ixmax] = true;
       stripyused[iymax] = true;
