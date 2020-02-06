@@ -9,6 +9,8 @@ GEM_reconstruct_HallAtest.C: same as GEM_reconstruct.C, but specialized for anal
 
 GEM_align.C: Alignment code; takes the output of GEM_reconstruct.C as input, determines best set of translational (x0, y0, z0) and rotational (alpha_x, alpha_y, alpha_z) "yaw, pitch, roll" offests to minimize chi-squared of straight line tracks.
 
+plot_GEM
+
 Usage example:
 
 root [0] .L GEM_reconstruct.C+
@@ -37,8 +39,11 @@ configHallAtest.txt: Example configuration file for five layer UVA GEM Hall A be
 configalign.txt: Example alignment configuration file for INFN four-layer cosmic test data.
 configalignHallAtest.txt: Example alignment configuration file for five-layer UVA GEM Hall A beam test data 2016.
 
+I have also added two utility macros:
+
+plot_GEMrun_summary.C
+plot_GEMrun_summary_HallA.C
+
+which can be used to generate a PDF file with a nice group of summary plots of the analysis. 
+
 Detailed documentation of configuration parameters is forthcoming. In the mean time, read the source code.
-
-
-
-
