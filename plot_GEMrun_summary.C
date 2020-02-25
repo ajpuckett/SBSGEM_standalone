@@ -139,7 +139,9 @@ void plot_GEMrun_summary(const char *filename, int nlayers=4, double chi2cut=50.
 
   TH1D *hClust2D_ADCdiff,*hNtracks_found, *hNhitspertrack, *hTrackChi2NDF, *hClust_corr, *hStrip_maxcor,*hTrackXp,*hTrackYp;
   TH2D *hClust2D_ADCasym_vs_ADCavg, *hTrackXresid_vs_layer, *hTrackYresid_vs_layer, *hTrackXresid_vs_module, *hTrackYresid_vs_module, *hTrackXY;
+  TH2D *hTrackXeresid_vs_layer, *hTrackYeresid_vs_layer, *hTrackXeresid_vs_module, *hTrackYeresid_vs_module;
 
+  
   fin->GetObject( "hClust2D_ADCdiff", hClust2D_ADCdiff );
   fin->GetObject( "hNtracks_found", hNtracks_found );
   fin->GetObject( "hNhitspertrack", hNhitspertrack );
@@ -154,6 +156,10 @@ void plot_GEMrun_summary(const char *filename, int nlayers=4, double chi2cut=50.
   fin->GetObject( "hTrackYresid_vs_layer", hTrackYresid_vs_layer );
   fin->GetObject( "hTrackXresid_vs_module", hTrackXresid_vs_module );
   fin->GetObject( "hTrackYresid_vs_module", hTrackYresid_vs_module );
+  fin->GetObject( "hTrackXeresid_vs_layer", hTrackXeresid_vs_layer );
+  fin->GetObject( "hTrackYeresid_vs_layer", hTrackYeresid_vs_layer );
+  fin->GetObject( "hTrackXeresid_vs_module", hTrackXeresid_vs_module );
+  fin->GetObject( "hTrackYeresid_vs_module", hTrackYeresid_vs_module );
 
   TClonesArray *heff_layers = new TClonesArray( "TH2D", nlayers );
   TClonesArray *hxyhit_layers = new TClonesArray( "TH2D", nlayers );
@@ -321,7 +327,7 @@ void plot_GEMrun_summary(const char *filename, int nlayers=4, double chi2cut=50.
   gPad->SetTopMargin(tmargin);
   hTrackYp->SetTitle("");
   hTrackYp->GetXaxis()->SetTitle("Track dy/dz fit");
-  hTrackYp->GetXaxis()->SetRangeUser(-0.5,0.5);
+  //hTrackYp->GetXaxis()->SetRangeUser(-0.5,0.5);
   
   hTrackYp->Draw();
   
@@ -402,6 +408,60 @@ void plot_GEMrun_summary(const char *filename, int nlayers=4, double chi2cut=50.
 
   c1->Print(pdffilename);
 
+  hTrackXeresid_vs_layer->SetYTitle("Track X excl. residual (mm)");
+  hTrackYeresid_vs_layer->SetYTitle("Track Y excl. residual (mm)");
+  hTrackXeresid_vs_layer->SetXTitle("Layer");
+  hTrackYeresid_vs_layer->SetXTitle("Layer");
+
+  hTrackXeresid_vs_module->SetYTitle("Track X excl. residual (mm)");
+  hTrackYeresid_vs_module->SetYTitle("Track Y excl. residual (mm)");
+  hTrackXeresid_vs_module->SetXTitle("Module");
+  hTrackYeresid_vs_module->SetXTitle("Module");
+
+  c1->cd(1);
+  hTrackXeresid_vs_layer->Draw("colz");
+
+  c1->cd(2);
+  hTrackXeresid_vs_module->Draw("colz");
+
+  c1->cd(4);
+  hTrackYeresid_vs_layer->Draw("colz");
+
+  c1->cd(5);
+  hTrackYeresid_vs_module->Draw("colz");
+
+  TH1D *hXeresid = new TH1D("hXeresid","",1000,-6,6);
+  TH1D *hYeresid = new TH1D("hYeresid","",1000,-6,6);
+  
+  Tout->Project("hXeresid","HitXresidE",cut);
+  Tout->Project("hYeresid","HitYresidE",cut);
+
+  binmax = hXeresid->GetMaximumBin();
+  binlow = binmax; binhigh = binmax;
+
+  while( hXeresid->GetBinContent(binlow--)>0.6*hXeresid->GetBinContent(binmax) ){};
+  while( hXeresid->GetBinContent(binhigh++)>0.6*hXeresid->GetBinContent(binmax) ){};
+
+  
+  c1->cd(3);
+  hXeresid->Fit("gaus","","",hXeresid->GetBinCenter(binlow),hXeresid->GetBinCenter(binhigh));
+  hXeresid->SetXTitle(stitle.Format("Track X excl. resid (mm), #chi^{2}/dof<%5.3g",chi2cut));
+  hXeresid->Draw();
+
+  binmax = hYeresid->GetMaximumBin();
+  binlow = binmax; binhigh = binmax;
+
+  while( hYeresid->GetBinContent(binlow--)>0.6*hYeresid->GetBinContent(binmax) ){};
+  while( hYeresid->GetBinContent(binhigh++)>0.6*hYeresid->GetBinContent(binmax) ){};
+
+  c1->cd(6);
+  hYeresid->Fit("gaus","","",hYeresid->GetBinCenter(binlow),hYeresid->GetBinCenter(binhigh));
+  hYeresid->SetXTitle(stitle.Format("Track Y excl. resid (mm), #chi^{2}/dof<%5.3g",chi2cut));
+  hYeresid->Draw();
+  
+  
+  c1->Print(pdffilename);
+  
   TCanvas *c3 = new TCanvas("c3","c3",2400,1200);
   c3->Divide(2,1,.001,.001);
 

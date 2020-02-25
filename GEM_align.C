@@ -798,49 +798,53 @@ void GEM_align( const char *inputfilename, const char *configfilename, const cha
 	 << (mod_az[module]-prev_az[module])/mod_daz[module] << ")" << endl;
   }
 
-  TMinuit *ExtraFit = new TMinuit( 6*nmodules );
-
-  ExtraFit->SetFCN( CHI2_FCN );
-
-  int ierflg=0;
+  if( offsetsonlyflag == 0 && rotationsonlyflag == 0 ){
   
-  for( int mod=0; mod<nmodules; mod++ ){
-    TString sparname;
+    TMinuit *ExtraFit = new TMinuit( 6*nmodules );
 
-    ExtraFit->mnparm( 6*mod,   sparname.Format( "mod%d_dx0", mod ), 0.0, mod_dx0[mod],0,0,ierflg);
-    ExtraFit->mnparm( 6*mod+1, sparname.Format( "mod%d_dy0", mod ), 0.0, mod_dy0[mod],0,0,ierflg);
-    ExtraFit->mnparm( 6*mod+2, sparname.Format( "mod%d_dz0", mod ), 0.0, mod_dz0[mod],0,0,ierflg);
-    ExtraFit->mnparm( 6*mod+3, sparname.Format( "mod%d_dax", mod ), 0.0, mod_dax[mod],0,0,ierflg);
-    ExtraFit->mnparm( 6*mod+4, sparname.Format( "mod%d_day", mod ), 0.0, mod_day[mod],0,0,ierflg);
-    ExtraFit->mnparm( 6*mod+5, sparname.Format( "mod%d_daz", mod ), 0.0, mod_daz[mod],0,0,ierflg);
-  }
+    ExtraFit->SetFCN( CHI2_FCN );
+
+    int ierflg=0;
+  
+    for( int mod=0; mod<nmodules; mod++ ){
+      TString sparname;
+
+      ExtraFit->mnparm( 6*mod,   sparname.Format( "mod%d_dx0", mod ), 0.0, mod_dx0[mod],0,0,ierflg);
+      ExtraFit->mnparm( 6*mod+1, sparname.Format( "mod%d_dy0", mod ), 0.0, mod_dy0[mod],0,0,ierflg);
+      ExtraFit->mnparm( 6*mod+2, sparname.Format( "mod%d_dz0", mod ), 0.0, mod_dz0[mod],0,0,ierflg);
+      ExtraFit->mnparm( 6*mod+3, sparname.Format( "mod%d_dax", mod ), 0.0, mod_dax[mod],0,0,ierflg);
+      ExtraFit->mnparm( 6*mod+4, sparname.Format( "mod%d_day", mod ), 0.0, mod_day[mod],0,0,ierflg);
+      ExtraFit->mnparm( 6*mod+5, sparname.Format( "mod%d_daz", mod ), 0.0, mod_daz[mod],0,0,ierflg);
+    }
 
   
-  double arglist[10];
-  arglist[0]=1;
-  ExtraFit->mnexcm("SET ERR",arglist,1,ierflg);
+    double arglist[10];
+    arglist[0]=1;
+    ExtraFit->mnexcm("SET ERR",arglist,1,ierflg);
 
-  arglist[0] = 5000;
-  arglist[1] = 1.;
+    arglist[0] = 5000;
+    arglist[1] = 1.;
   
-  ExtraFit->mnexcm("MIGRAD",arglist,2,ierflg);
+    ExtraFit->mnexcm("MIGRAD",arglist,2,ierflg);
 
-  for( int mod=0; mod<nmodules; mod++ ){
-    double dummy;
-    double dx0,dy0,dz0,dax,day,daz;
-    ExtraFit->GetParameter(6*mod,dx0,dummy);
-    ExtraFit->GetParameter(6*mod+1,dy0,dummy);
-    ExtraFit->GetParameter(6*mod+2,dz0,dummy);
-    ExtraFit->GetParameter(6*mod+3,dax,dummy);
-    ExtraFit->GetParameter(6*mod+4,day,dummy);
-    ExtraFit->GetParameter(6*mod+5,daz,dummy);
-    mod_x0[mod] += dx0;
-    mod_y0[mod] += dy0;
-    mod_z0[mod] += dz0;
-    mod_ax[mod] += dax;
-    mod_ay[mod] += day;
-    mod_az[mod] += daz;
+    for( int mod=0; mod<nmodules; mod++ ){
+      double dummy;
+      double dx0,dy0,dz0,dax,day,daz;
+      ExtraFit->GetParameter(6*mod,dx0,dummy);
+      ExtraFit->GetParameter(6*mod+1,dy0,dummy);
+      ExtraFit->GetParameter(6*mod+2,dz0,dummy);
+      ExtraFit->GetParameter(6*mod+3,dax,dummy);
+      ExtraFit->GetParameter(6*mod+4,day,dummy);
+      ExtraFit->GetParameter(6*mod+5,daz,dummy);
+      mod_x0[mod] += dx0;
+      mod_y0[mod] += dy0;
+      mod_z0[mod] += dz0;
+      mod_ax[mod] += dax;
+      mod_ay[mod] += day;
+      mod_az[mod] += daz;
     
+    }
+
   }
   
   ofstream outfile(outputfilename);
