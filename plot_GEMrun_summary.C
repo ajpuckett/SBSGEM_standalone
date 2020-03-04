@@ -1,4 +1,4 @@
-void plot_GEMrun_summary(const char *filename, int nlayers=4, double chi2cut=50.0){
+void plot_GEMrun_summary(const char *filename, int nlayers=4, double chi2cut=50.0, double CALOCUT=0.0){
   gROOT->ProcessLine(".x ~/rootlogon.C");
 
   gStyle->SetOptStat(0);

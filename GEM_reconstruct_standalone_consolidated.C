@@ -1,6 +1,5 @@
 #include "TTree.h"
 #include "TChain.h"
-#include "GEMHit_tree_HallAtest.C"
 #include "TFile.h"
 #include "TH1D.h"
 #include "TH2D.h"
@@ -31,6 +30,7 @@
 #include "TMarker.h"
 #include "TClonesArray.h"
 #include "TLine.h"
+#include "TStyle.h"
 //#include "TApplication.h"
 
 //TODO: don't hard-code the number of APV25 samples. But for this we need a better decoded hit format anyway
@@ -42,6 +42,11 @@
 //We need to modify this so that we no longer assume that every module has the same numbers of strips or strip orientations:
 //The only assumption we will retain is the assumption that each module has two non-parallel strip orientations, generically denoted "U" and "V"
 //We will also make the strip pitch along each direction a configurable parameter:
+
+const int MAXNCH = 32768;
+const int MAXNFADC = 100;
+const int MAXNTDC  = 100;
+
 int nstripsx = 1280;
 int nstripsy = 1024;
 int nmodules = 12;
@@ -63,6 +68,9 @@ int maxnstripYpercluster=7;
 //double localmaxthreshold_nsigma=3.0; //number of sigmas to create a new local max/hit:
 //double sigmaT_2Dmatch=26.0; //guess
 //double sigmaADC_2Dmatch=18.0; //guess
+
+TString DataFormat="INFN";
+
 double cluster2Dmatch_asymcut=0.5; //dimensionless
 double cluster2Dmatch_tcut = 25.0; //ns
 double maxstripcorthreshold = 0.0;
@@ -334,7 +342,7 @@ void filter_strips_by_module( moduledata_t &mod_data, double cor_threshold=0.0 )
       
       double sumx=0.0, sumy=0.0, sumx2=0.0, sumy2=0.0, sumxy=0.0;
 
-      for( int isamp=0; isamp<6; isamp++ ){
+      for( int isamp=0; isamp<nADCsamples; isamp++ ){
 	double ADCx = mod_data.ADCsamp_xstrips[ixstrip][isamp];
 	double ADCy = mod_data.ADCsamp_ystrips[iystrip][isamp];
 	
@@ -345,14 +353,16 @@ void filter_strips_by_module( moduledata_t &mod_data, double cor_threshold=0.0 )
 	sumxy += ADCx*ADCy;
       }
 
-      double mux = sumx/6.0;
-      double muy = sumy/6.0;
-      double varx = sumx2/6.0-pow(mux,2);
-      double vary = sumy2/6.0-pow(muy,2);
+      double nSAMP = double(nADCsamples);
+      
+      double mux = sumx/nSAMP;
+      double muy = sumy/nSAMP;
+      double varx = sumx2/nSAMP-pow(mux,2);
+      double vary = sumy2/nSAMP-pow(muy,2);
       double sigx = sqrt(varx);
       double sigy = sqrt(vary);
 
-      double ccor = ( sumxy - 6.0*mux*muy )/( 6.0*sigx*sigy );
+      double ccor = ( sumxy - nSAMP*mux*muy )/( nSAMP*sigx*sigy );
 
       if( mod_data.Bestmatch_xstrips[ixstrip] < 0 || ccor > mod_data.BestCor_xstrips[ixstrip] ){
 	mod_data.Bestmatch_xstrips[ixstrip] = iystrip;
@@ -485,8 +495,8 @@ int find_clusters_by_module( moduledata_t mod_data, clusterdata_t &clust_data ){
 	//Question: do we really need to compute these again? I think maybe not, but to be on the safe side let's do it anyway:
 	
 	double sumx=0.0, sumy=0.0, sumx2=0.0, sumy2=0.0, sumxy=0.0;
-
-	for( int isamp=0; isamp<6; isamp++ ){
+	
+	for( int isamp=0; isamp<nADCsamples; isamp++ ){
 	  double ADCx = mod_data.ADCsamp_xstrips[ixstrip][isamp];
 	  double ADCy = mod_data.ADCsamp_ystrips[iystrip][isamp];
 	  
@@ -496,15 +506,17 @@ int find_clusters_by_module( moduledata_t mod_data, clusterdata_t &clust_data ){
 	  sumy2 += pow(ADCy,2);
 	  sumxy += ADCx*ADCy;
 	}
+
+	double nSAMP = double(nADCsamples);
 	
-	double mux = sumx/6.0;
-	double muy = sumy/6.0;
-	double varx = sumx2/6.0-pow(mux,2);
-	double vary = sumy2/6.0-pow(muy,2);
+	double mux = sumx/nSAMP;
+	double muy = sumy/nSAMP;
+	double varx = sumx2/nSAMP-pow(mux,2);
+	double vary = sumy2/nSAMP-pow(muy,2);
 	double sigx = sqrt(varx);
 	double sigy = sqrt(vary);
 	
-	double ccor = ( sumxy - 6.0*mux*muy )/( 6.0*sigx*sigy );
+	double ccor = ( sumxy - nSAMP*mux*muy )/( nSAMP*sigx*sigy );
 
 	double ADCXY = sqrt( mod_data.ADCsum_xstrips[ixstrip]*mod_data.ADCsum_ystrips[iystrip] );
 
@@ -706,9 +718,9 @@ int find_clusters_by_module( moduledata_t mod_data, clusterdata_t &clust_data ){
       int ixlo=nstripsx+1,ixhi=-1,iylo=nstripsy+1,iyhi=-1;
 
       //cluster ADC x and ADC y sums for individual time samples:
-      double sumxsamp[6],sumysamp[6];
+      double sumxsamp[nADCsamples],sumysamp[nADCsamples];
 
-      for( int isamp=0; isamp<6; isamp++ ){
+      for( int isamp=0; isamp<nADCsamples; isamp++ ){
 	sumxsamp[isamp] = 0.0;
 	sumysamp[isamp] = 0.0;
       }
@@ -749,7 +761,7 @@ int find_clusters_by_module( moduledata_t mod_data, clusterdata_t &clust_data ){
 	txsum += ADCtemp * tstrip;
 	txsum2 += ADCtemp * pow(tstrip,2);
 
-	for( int isamp=0; isamp<6; isamp++ ){
+	for( int isamp=0; isamp<nADCsamples; isamp++ ){
 	  sumxsamp[isamp] += mod_data.ADCsamp_xstrips[ixstrip][isamp];
 	}
       }
@@ -779,7 +791,7 @@ int find_clusters_by_module( moduledata_t mod_data, clusterdata_t &clust_data ){
 
 	tysum += ADCtemp * tstrip;
 	tysum2 += ADCtemp * pow(tstrip,2);
-	for( int isamp=0; isamp<6; isamp++ ){
+	for( int isamp=0; isamp<nADCsamples; isamp++ ){
 	  sumysamp[isamp] += mod_data.ADCsamp_ystrips[iystrip][isamp];
 	}
       }
@@ -787,7 +799,7 @@ int find_clusters_by_module( moduledata_t mod_data, clusterdata_t &clust_data ){
       vector<double> xADCsamples,yADCsamples;
       
       double csumxsamp =0.0, csumysamp=0.0, csumx2samp=0.0, csumy2samp=0.0, csumxysamp=0.0;
-      for( int isamp=0; isamp<6; isamp++ ){
+      for( int isamp=0; isamp<nADCsamples; isamp++ ){
 	csumxsamp += sumxsamp[isamp];
 	csumysamp += sumysamp[isamp];
 	csumx2samp += pow(sumxsamp[isamp],2);
@@ -797,14 +809,16 @@ int find_clusters_by_module( moduledata_t mod_data, clusterdata_t &clust_data ){
 	yADCsamples.push_back( sumysamp[isamp] );
       }
 
-      double mux = csumxsamp/6.0;
-      double muy = csumysamp/6.0;
-      double varx = csumx2samp/6.0-pow(mux,2);
-      double vary = csumy2samp/6.0-pow(muy,2);
+      double nSAMP = double(nADCsamples);
+      
+      double mux = csumxsamp/nSAMP;
+      double muy = csumysamp/nSAMP;
+      double varx = csumx2samp/nSAMP-pow(mux,2);
+      double vary = csumy2samp/nSAMP-pow(muy,2);
       double sigx = sqrt(varx);
       double sigy = sqrt(vary);
 
-      double ccor = (csumxysamp - 6.0*mux*muy)/(6.0*sigx*sigy);
+      double ccor = (csumxysamp - nSAMP*mux*muy)/(nSAMP*sigx*sigy);
 
       //      if( ccor >= clustcorthreshold && ADCsumx+ADCsumy > thresh_clustersum*2.0 ){
       
@@ -1594,6 +1608,11 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
 	if( ntokens >= 2 ){
 	  TString skey = ( (TObjString*) (*tokens)[0] )->GetString();
 
+	  if( skey == "dataformat" ){
+	    TString stemp = ( (TObjString*) (*tokens)[1] )->GetString();
+	    DataFormat = stemp;
+	  }
+	  
 	  if( skey == "NMAX" ){
 	    TString stemp = ( (TObjString*) (*tokens)[1] )->GetString();
 	    NMAX = stemp.Atoi();
@@ -1608,7 +1627,12 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
 	    TString snmodules = ( (TObjString*) (*tokens)[1] )->GetString();
 	    nmodules = snmodules.Atoi();
 	  }
-	
+
+	  if( skey == "nADCsamples" ){ //ordinarily, this will always be 6, but we don't want to hardcode.
+	    TString snsamp =  ( (TObjString*) (*tokens)[1] )->GetString();
+	    nADCsamples = snsamp.Atoi();
+	  }
+	  
 	  if( skey == "mod_x0" && ntokens >= nmodules + 1 ){
 	    for( int i=1; i<ntokens; i++ ){
 	      TString smodx = ( (TObjString*) (*tokens)[i] )->GetString();
@@ -2142,8 +2166,65 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
   // C->SetBranchAddress("strip",strip);
   // C->SetBranchAddress("adc0",adc0);
 
-  GEMHit_tree_HallAtest *T = new GEMHit_tree_HallAtest(C);
+  //GEMHit_tree_HallAtest *T = new GEMHit_tree_HallAtest(C);
+  //Instead of using a skeleton class, let's define all needed variables and initialize using SetBranchAddress depending on configuration:
 
+  //Variables common to all three formats (so far):
+  Int_t evtID; //event ID 
+  Int_t nch;   //number of channels:
+  Int_t Strip[MAXNCH]; //strip index within module:
+  Int_t moduleID[MAXNCH]; //Unique identifier of module
+  Int_t planeID[MAXNCH];  //Layer ID
+  Int_t axis[MAXNCH];     //strip orientation flag;
+  //ADC samples: 
+  Int_t adc0[MAXNCH];
+  Int_t adc1[MAXNCH];
+  Int_t adc2[MAXNCH];
+  Int_t adc3[MAXNCH];
+  Int_t adc4[MAXNCH];
+  Int_t adc5[MAXNCH];
+  //Calorimeter info: specific to data format "HALLA":
+  Int_t nfadc;
+  Int_t fCH[MAXNFADC];
+  Int_t ftimting[MAXNFADC];
+  Int_t fadc[MAXNFADC];
+  Int_t ntdc;
+  Int_t tCH[MAXNTDC];
+  Double_t ttiming[MAXNTDC];
+
+  //Set Branch addresses common to all three data formats:
+  C->SetBranchAddress("evtID",&evtID);
+  C->SetBranchAddress("nch",&nch);
+  C->SetBranchAddress("strip",Strip);
+  C->SetBranchAddress("adc0",adc0);
+  C->SetBranchAddress("adc1",adc1);
+  C->SetBranchAddress("adc2",adc2);
+  C->SetBranchAddress("adc3",adc3);
+  C->SetBranchAddress("adc4",adc4);
+  C->SetBranchAddress("adc5",adc5);
+  
+  if( DataFormat == "INFN" || DataFormat == "HALLA" ){
+    C->SetBranchAddress("detID",moduleID);
+    C->SetBranchAddress("planeID",axis);
+    //No layer ID for INFN or Hall A data
+    if( DataFormat == "HALLA" ){
+      C->SetBranchAddress("nfadc",&nfadc);
+      C->SetBranchAddress("ntdc",&ntdc);
+      C->SetBranchAddress("fCH",fCH);
+      C->SetBranchAddress("ftimting",ftimting);
+      C->SetBranchAddress("fadc",fadc);
+      C->SetBranchAddress("tCH",tCH);
+      C->SetBranchAddress("ttiming",ttiming);
+    }
+  }
+
+  if( DataFormat == "UVA" ){
+    C->SetBranchAddress("planeID",planeID);
+    C->SetBranchAddress("moduleID",moduleID);
+    C->SetBranchAddress("axis",axis);
+  }
+  
+  
   cout << "Total events = " << C->GetEntries() << endl;
   
   long nevent=0;
@@ -2237,8 +2318,8 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
   TH2D *hADCsampXstrip_max = new TH2D("hADCsampXstrip_max","ADC samples for max strip, clusters on track only",6,-0.5,5.5,500,0.0,4000.0);
   TH2D *hADCsampYstrip_max = new TH2D("hADCsampYstrip_max","ADC samples for max strip, clusters on track only",6,-0.5,5.5,500,0.0,4000.0);
 
-  TH2D *hADCsampXclust = new TH2D("hADCsampXclust","Cluster-summed X ADC samples, cluster on track",6,-0.5,5.5,500,0.0,4000.0);
-  TH2D *hADCsampYclust = new TH2D("hADCsampYclust","Cluster-summed Y ADC samples, cluster on track",6,-0.5,5.5,500,0.0,4000.0);
+  TH2D *hADCsampXclust = new TH2D("hADCsampXclust","Cluster-summed X ADC samples, cluster on track",6,-0.5,5.5,500,0.0,10000.0);
+  TH2D *hADCsampYclust = new TH2D("hADCsampYclust","Cluster-summed Y ADC samples, cluster on track",6,-0.5,5.5,500,0.0,10000.0);
   
   TH1D *hADCsampmax_Xstrip = new TH1D("hADCsampmax_Xstrip","max ADC sample for max strip, clusters on track",1000,0.0,3000.0);
   TH1D *hADCsampmax_Ystrip = new TH1D("hADCsampmax_Ystrip","max ADC sample for max strip, clusters on track",1000,0.0,3000.0);
@@ -2327,7 +2408,7 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
     mod_Rotinv[imodule] = Rtemp.Inverse();
   }
   
-  while( T->GetEntry(nevent++) && (NMAX < 0 || nevent < NMAX ) ){
+  while( C->GetEntry(nevent++) && (NMAX < 0 || nevent < NMAX ) ){
     if( nevent % 1000 == 0 ) cout << nevent << endl;
 
     //Clustering and hit reconstruction:
@@ -2391,23 +2472,26 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
     map<int,int> mod_maxstripY;
     map<int,double> mod_ADCmaxY;
     
-    for( int ich=0; ich<T->nch; ich++ ){
-      int strip = (T->strip)[ich];
-      int plane = (T->planeID)[ich];
-      int module = (T->detID)[ich];
+    for( int ich=0; ich<nch; ich++ ){
+      int strip = Strip[ich];
+      int plane = axis[ich];
+      int module = moduleID[ich];
+
+      if( DataFormat == "UVA" ) module = moduleID[ich] + 4*(planeID[ich]-1);
+      
       int layer = mod_layer[module];
 
       modules_hit.insert( module );
       
       layers_hit.insert(layer);
       
-      int ADCsamples[6];
-      ADCsamples[0] = (T->adc0)[ich];
-      ADCsamples[1] = (T->adc1)[ich];
-      ADCsamples[2] = (T->adc2)[ich];
-      ADCsamples[3] = (T->adc3)[ich];
-      ADCsamples[4] = (T->adc4)[ich];
-      ADCsamples[5] = (T->adc5)[ich];
+      int ADCsamples[nADCsamples];
+      ADCsamples[0] = adc0[ich];
+      ADCsamples[1] = adc1[ich];
+      ADCsamples[2] = adc2[ich];
+      ADCsamples[3] = adc3[ich];
+      ADCsamples[4] = adc4[ich];
+      ADCsamples[5] = adc5[ich];
 
       bool keepstrip=false;
       double maxsamp=0.0,sumsamp=0.0;
@@ -2635,7 +2719,7 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
 	int clusterflag = find_clusters_by_module( ModData[module], clusttemp );
 
 	if( clusterflag != 0 ){
-	  cout << "event " << T->evtID << ", module " << module << " too noisy, gave up" << endl;
+	  cout << "event " << evtID << ", module " << module << " too noisy, gave up" << endl;
 	}
 
 	hNclust_module->Fill(clusttemp.nclust2D, module );
@@ -2761,31 +2845,31 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
 
 	Ntracks = tracktemp.ntracks;
 
-	if( Ntracks > 0 ){ //Fill CALO information:
+	if( Ntracks > 0 && DataFormat == "HALLA" ){ //Fill CALO information:
 	  double fadcsum = 0.0;
 	  double fshowersum = 0.0;
 	  double fpreshowersum=0.0;
 	  
-	  for( int icalhit=0; icalhit<T->nfadc; icalhit++ ){
-	    int fCH = T->fCH[icalhit];
-	    int chan = fCH % 256;
-	    int slot = fCH >> 8;
+	  for( int icalhit=0; icalhit<nfadc; icalhit++ ){
+	    //int fCH = fCH[icalhit];
+	    int chan = fCH[icalhit] % 256;
+	    int slot = fCH[icalhit] >> 8;
 	    
 	    int globalchan = chan + (slot-17)*16;
 
 	    //cout << "chan, slot, globalchan = " << chan << ", " << slot << ", " << globalchan << endl;
 	    
-	    int maxtimesample = T->ftimting[icalhit];
+	    int maxtimesample = ftimting[icalhit];
 	    
-	    hCALfadc_vs_ch->Fill( globalchan, T->fadc[icalhit] );
-	    hCALftime_vs_ch->Fill( globalchan, T->ftimting[icalhit] );
+	    hCALfadc_vs_ch->Fill( globalchan, fadc[icalhit] );
+	    hCALftime_vs_ch->Fill( globalchan, ftimting[icalhit] );
 
 	    int tmin = 30, tmax=45;
 	    if( globalchan == 19 ) tmin = 24;
 	    
 	    if( globalchan < 21 || globalchan > 26 ){
 	      if( maxtimesample >= tmin && maxtimesample <= tmax ){
-		fadcsum += T->fadc[icalhit];
+		fadcsum += fadc[icalhit];
 	      }
 	    }
 	  }

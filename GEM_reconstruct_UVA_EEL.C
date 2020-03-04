@@ -178,7 +178,9 @@ struct clusterdata_t { //1D and 2D clustering results by module:
   vector<double> xmom2D; // xmean - xstrip max (use to refine hit position reconstruction)
   vector<double> ymom2D; // ymean - ystrip max (use to refine hit position reconstruction)
   vector<bool> keepclust2D; //flag to include or not include cluster in tracking analysis: default to true; set by "prune" filtering algorithm:
-
+  vector<vector<double> > ADCsamp_xclust; // Cluster-summed ADC time samples, X strips:
+  vector<vector<double> > ADCsamp_yclust; // Cluster-summed ADC time samples, Y strips;
+  
   
   int nclustx;
   vector<int> nstripx;
@@ -783,6 +785,8 @@ int find_clusters_by_module( moduledata_t mod_data, clusterdata_t &clust_data ){
 	}
       }
 
+      vector<double> xADCsamples,yADCsamples;
+      
       double csumxsamp =0.0, csumysamp=0.0, csumx2samp=0.0, csumy2samp=0.0, csumxysamp=0.0;
       for( int isamp=0; isamp<6; isamp++ ){
 	csumxsamp += sumxsamp[isamp];
@@ -790,6 +794,8 @@ int find_clusters_by_module( moduledata_t mod_data, clusterdata_t &clust_data ){
 	csumx2samp += pow(sumxsamp[isamp],2);
 	csumy2samp += pow(sumysamp[isamp],2);
 	csumxysamp += sumxsamp[isamp]*sumysamp[isamp];
+	xADCsamples.push_back( sumxsamp[isamp] );
+	yADCsamples.push_back( sumysamp[isamp] );
       }
 
       double mux = csumxsamp/6.0;
@@ -840,6 +846,9 @@ int find_clusters_by_module( moduledata_t mod_data, clusterdata_t &clust_data ){
       clust_data.CorrCoeff2D.push_back( ccor );
       clust_data.CorrCoeffMaxStrips.push_back( maxcor );
       clust_data.keepclust2D.push_back( true );
+      clust_data.ADCsamp_xclust.push_back( xADCsamples );
+      clust_data.ADCsamp_yclust.push_back( yADCsamples );
+      
 
       clust_data.xmom2D.push_back( (clust_data.xmean[nclust] - xstripmaxadc)/mod_ustrip_pitch[module] );
       clust_data.ymom2D.push_back( (clust_data.ymean[nclust] - ystripmaxadc)/mod_vstrip_pitch[module] );
@@ -2154,6 +2163,12 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
   TH2D *hNclustY_layer = new TH2D("hNclustY_layer","N clusters Y per layer",101,-0.5,100.5,nlayers,-0.5,nlayers-0.5);
 
   TH1D *hNlayers_2Dclust = new TH1D("hNlayers_2Dclust","N layers with 2D cluster reconstructed",nlayers+1,-0.5,nlayers+0.5);
+
+  TH2D *hNstripsX_module = new TH2D("hNstripsX_module","N strips X per module",101,-0.5,100.5,nmodules,-0.5,nmodules-0.5);
+  TH2D *hNstripsY_module = new TH2D("hNstripsY_module","N strips Y per module",101,-0.5,100.5,nmodules,-0.5,nmodules-0.5);
+  
+  TH2D *hNclust_module = new TH2D("hNclust_module","N clusters 2D per module",101,-0.5,100.5,nmodules,-0.5,nmodules-0.5);
+  //TH2D *hNclustY_module = new TH2D("hNclustY_module","N clusters Y per layer",101,-0.5,100.5,nmodules,-0.5,nmodules-0.5);
   
   TH1D *hclustwidth_x = new TH1D("hclustwidth_x","Width of X clusters in strips",100,0.5,100.5);
   TH1D *hclustwidth_y = new TH1D("hclustwidth_y","Width of Y clusters in strips",100,0.5,100.5);
@@ -2216,6 +2231,9 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
   TH2D *hADCsampXstrip_max = new TH2D("hADCsampXstrip_max","ADC samples for max strip, clusters on track only",6,-0.5,5.5,500,0.0,4000.0);
   TH2D *hADCsampYstrip_max = new TH2D("hADCsampYstrip_max","ADC samples for max strip, clusters on track only",6,-0.5,5.5,500,0.0,4000.0);
 
+  TH2D *hADCsampXclust = new TH2D("hADCsampXclust","Cluster-summed X ADC samples, cluster on track",6,-0.5,5.5,500,0.0,4000.0);
+  TH2D *hADCsampYclust = new TH2D("hADCsampYclust","Cluster-summed Y ADC samples, cluster on track",6,-0.5,5.5,500,0.0,4000.0);
+  
   TH1D *hADCsampmax_Xstrip = new TH1D("hADCsampmax_Xstrip","max ADC sample for max strip, clusters on track",1000,0.0,3000.0);
   TH1D *hADCsampmax_Ystrip = new TH1D("hADCsampmax_Ystrip","max ADC sample for max strip, clusters on track",1000,0.0,3000.0);
 
@@ -2583,6 +2601,9 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
 	int module = *imod;
 	int layer = mod_layer[module];
 
+	hNstripsX_module->Fill( ModData[module].xstrips.size(), module );
+	hNstripsY_module->Fill( ModData[module].ystrips.size(), module );
+	
 	ModData[module].modindex = module;
 	ModData[module].layerindex = layer;
 	int strip = mod_maxstripX[module];
@@ -2615,6 +2636,8 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
 	}
 	
 	//	cout << "ending cluster finding " << endl;
+
+	hNclust_module->Fill(clusttemp.nclust2D, module );
 	
 	mod_clusters[module] = clusttemp;
 
@@ -2866,10 +2889,13 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
 
 	    hADCsumXstrip_max->Fill( ModData[module].ADCsum_xstrips[clusttemp.ixstripmax[clusttemp.ixclust2D[iclust2D]]] );
 	    hADCsumYstrip_max->Fill( ModData[module].ADCsum_ystrips[clusttemp.iystripmax[clusttemp.iyclust2D[iclust2D]]] );
-
+	    
 	    for( int isamp=0; isamp<6; isamp++ ){
 	      hADCsampXstrip_max->Fill( isamp, ModData[module].ADCsamp_xstrips[clusttemp.ixstripmax[clusttemp.ixclust2D[iclust2D]]][isamp] );
 	      hADCsampYstrip_max->Fill( isamp, ModData[module].ADCsamp_ystrips[clusttemp.iystripmax[clusttemp.iyclust2D[iclust2D]]][isamp] );
+
+	      hADCsampXclust->Fill( isamp, clusttemp.ADCsamp_xclust[iclust2D][isamp] );
+	      hADCsampYclust->Fill( isamp, clusttemp.ADCsamp_yclust[iclust2D][isamp] );
 	    }
 
 	    hADCsampmax_Xstrip->Fill( ModData[module].ADCsamp_xstrips[clusttemp.ixstripmax[clusttemp.ixclust2D[iclust2D]]][ModData[module].isampmax_xstrips[clusttemp.ixstripmax[clusttemp.ixclust2D[iclust2D]]]] );
@@ -2883,6 +2909,8 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
 	    hADCprodXYcluster->Fill( sqrt( clusttemp.totalchargex[clusttemp.ixclust2D[iclust2D]]*
 					   clusttemp.totalchargey[clusttemp.iyclust2D[iclust2D]] ) );
 
+	    
+	    
 	    //loop over strips in cluster and fill strip deltaT histograms:
 	    for( int ixstrip=clusttemp.ixstriplo[clusttemp.ixclust2D[iclust2D]]; ixstrip<=clusttemp.ixstriphi[clusttemp.ixclust2D[iclust2D]]; ixstrip++ ){
 	      if( ModData[module].Tmean_xstrips.find( ixstrip ) != ModData[module].Tmean_xstrips.end() ){

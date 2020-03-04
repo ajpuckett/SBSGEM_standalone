@@ -419,29 +419,55 @@ void GEM_align( const char *inputfilename, const char *configfilename, const cha
 	 << mod_ax[module] << ", " << mod_ay[module] << ", " << mod_az[module] << ")" << endl;
   }
 
-  niter = 1;
+ 
+  //niter = 1;
   
-  //  for( int iter=0; iter<niter; iter++ ){
-
-  nevent=0;
+  for( int iter=0; iter<=niter; iter++ ){
     
-  //For each alignment iteration, let's define our chi^2 function of the global geometrical alignment parameters
-  //and then try to linearize the problem:
-  int nparam = nmodules*6; //order of parameters is x0,y0,z0,ax,ay,az
-
-  if( refmod >= 0 && refmod < nmodules ){
-    nparam = (nmodules-1)*6;
-  }
+    nevent=0;
     
-  TMatrixD M(nparam,nparam);
-  TVectorD b(nparam);
-
-  for( int ipar=0; ipar<nparam; ipar++ ){
-    for( int jpar=0; jpar<nparam; jpar++ ){
-      M(ipar,jpar) = 0.0;
+    //For each alignment iteration, let's define our chi^2 function of the global geometrical alignment parameters
+    //and then try to linearize the problem:
+    int nparam = nmodules*6; //order of parameters is x0,y0,z0,ax,ay,az
+    
+    if( refmod >= 0 && refmod < nmodules ){
+      nparam = (nmodules-1)*6;
     }
-    b(ipar) = 0.0;
-  }
+    
+    TMatrixD M(nparam,nparam);
+    TVectorD b(nparam);
+    
+    for( int ipar=0; ipar<nparam; ipar++ ){
+      for( int jpar=0; jpar<nparam; jpar++ ){
+	M(ipar,jpar) = 0.0;
+      }
+      b(ipar) = 0.0;
+    }
+
+    //To simplify the special cases for alignment only or rotation only, we define separate matrices for alignment only or position only fits:
+    int nparam_rot = nmodules*3;
+    int nparam_pos = nmodules*3;
+
+    if( refmod >= 0 && refmod < nmodules ){
+      nparam_rot = (nmodules-1)*3;
+      nparam_pos = (nmodules-1)*3;
+    }
+    
+    TMatrixD Mrot(nparam_rot,nparam_rot);
+    TVectorD brot(nparam_rot);
+
+    TMatrixD Mpos(nparam_pos,nparam_pos);
+    TVectorD bpos(nparam_pos);
+
+    for( int ipar=0; ipar<nparam_rot; ipar++ ){
+      for(int jpar=0; jpar<nparam_rot; jpar++ ){
+	Mrot(ipar,jpar) = 0.0;
+	Mpos(ipar,jpar) = 0.0;
+      }
+      brot(ipar) = 0.0;
+      bpos(ipar) = 0.0;
+    }
+      
     
     // We wish to minimize the sum of squared residuals between all hits and tracks by varying the x,y,z position offsets and ax,ay,az
     // rotation angles of all nmodules modules:
@@ -472,334 +498,535 @@ void GEM_align( const char *inputfilename, const char *configfilename, const cha
     // dchi2/dz0 = 2*(xlocal - modaz*ylocal + modx0 - (xtrack + xptrack*(modz0 + modax*ylocal - moday*xlocal))/sigx^2*-xptrack +
     //             2*(ylocal + modaz*xlocal + mody0 - (ytrack + yptrack*(modz0 + modax*ylocal - moday*xlocal))/sigy^2*-yptrack
     //dchi2/dax =
-  NTRACKS = 0;
-  
-  while( T->GetEntry(elist->GetEntry(nevent++))){
 
-    if( nevent % 100000 == 0 ){
-      cout << "Linearized alignment, nevent = " << nevent << endl;
-    }
-      
-    double xptrack,yptrack,xtrack,ytrack;
-    //if( iter <= 0 ){ //on first iteration use track from ROOT tree:
-    xptrack = T->TrackXp;
-    yptrack = T->TrackYp;
-    xtrack = T->TrackX;
-    ytrack = T->TrackY;
-	
-    if( nevent < NMAX ){ //fill TRACK arrays 
-      NTRACKS++;
-      XTRACK.push_back( xtrack );
-      XPTRACK.push_back( xptrack );
-      YTRACK.push_back( ytrack );
-      YPTRACK.push_back( yptrack );
-      TRACKNHITS.push_back( T->TrackNhits );
-    }
+    // if( iter < niter ){
+    //   offsetsonlyflag = true;
+    // } else {
+    //   offsetsonlyflag = false;
+    //   rotationsonlyflag = false;
+    // }
+
+    cout << "Starting linearized alignment procedure, iteration = " << iter << endl;
     
-    //we want to modify this to compute the CHANGE in module parameters required to minimize chi^2;
-    // so the starting parameters are taken as given.
-    // x_0 --> x_0 + dx0
-    // y_0 --> y_0 + dy0
-    // z_0 --> z_0 + dz0
-    // ax --> ax + dax
-    // ay --> ay + day
-    // az --> az + daz
-    // The coefficients of the changes in the parameters should stay the same as those of the parameters themselves, but the RHS needs modified:
-    vector<int> HITMODTEMP;
-    vector<double> HITXTEMP,HITYTEMP;
+    if( iter == niter ){ //only fill these arrays on the last iteration:
+      NTRACKS = 0;
+    }
+    while( T->GetEntry(elist->GetEntry(nevent++))){
       
-    for( int ihit=0; ihit<T->TrackNhits; ihit++ ){
-      int module = T->HitModule[ihit];
-      double sigx = T->HitSigX[ihit];
-      double sigy = T->HitSigY[ihit];
-      double ulocal = T->HitXlocal[ihit]; //"U" local: generalized "X"
-      double vlocal = T->HitYlocal[ihit]; //"V" local: generalized "Y"
-
-      double det = mod_Pxu[module]*mod_Pyv[module] - mod_Pyu[module]*mod_Pxv[module]; //cos( alphau) * sin(alphav) - sin(alphau)*cos(alphav) = 1 for alphau = 0, alphav = 90
-	
-      double xlocal = (mod_Pyv[module]*ulocal - mod_Pyu[module]*vlocal)/det; //(sin(alphav)*U - sin(alphau)*V)/det = U = X for alphau = 0, alphav = 90
-      double ylocal = (mod_Pxu[module]*vlocal - mod_Pxv[module]*ulocal)/det; //(cos(alphau)*V - cos(alphav)*U)/det = V = Y for alphau = 0, alphav = 90
-
-      //On subsequent iterations after the first, we want to fit the changes in the parameters relative to the previous iteration. How can we do this properly?
-      //We need to come up with a new definition for the "local" coordinates that properly accounts for the new coordinate system:
-      //We already re-fit the track; this means that 
-
-      if( nevent < NMAX ){
-	HITMODTEMP.push_back( module );
-	HITXTEMP.push_back( ulocal );
-	HITYTEMP.push_back( vlocal );
+      if( nevent % 100000 == 0 ){
+	cout << "Linearized alignment, nevent = " << nevent << endl;
       }
-      TVector3 hitpos_local(xlocal,ylocal,0);
-      TRotation R;
-      R.RotateX( mod_ax[module] );
-      R.RotateY( mod_ay[module] );
-      R.RotateZ( mod_az[module] );
-	
-      TVector3 modcenter_global( mod_x0[module],mod_y0[module],mod_z0[module] );
-      TVector3 hitpos_global = modcenter_global + R*hitpos_local;
-	
-      double sigma = 0.1;
-      double weight = pow(sigma_hitpos,-2);
+      
+      double xptrack,yptrack,xtrack,ytrack;
+      if( iter < 0 ){ //on first iteration use track from ROOT tree:
+	xptrack = T->TrackXp;
+	yptrack = T->TrackYp;
+	xtrack = T->TrackX;
+	ytrack = T->TrackY;
+      } else { //on ALL iterations, we re-fit the track using updated alignment parameters (or the initial ones from the config file)
+	double sumX=0.0, sumY = 0.0, sumZ = 0.0, sumXZ = 0.0, sumYZ = 0.0, sumZ2 = 0.0;
 
-      int ipar_x0 = 6*module;
-      int ipar_y0 = 6*module+1;
-      int ipar_z0 = 6*module+2;
-      int ipar_ax = 6*module+3;
-      int ipar_ay = 6*module+4;
-      int ipar_az = 6*module+5;
+	for( int ihit=0; ihit<T->TrackNhits; ihit++ ){
+	  int module = T->HitModule[ihit];
 
-      if( refmod >= 0 && refmod < nmodules ){
-	if( module > refmod ){
-	  ipar_x0 = 6*(module-1);
-	  ipar_y0 = 6*(module-1)+1;
-	  ipar_z0 = 6*(module-1)+2;
-	  ipar_ax = 6*(module-1)+3;
-	  ipar_ay = 6*(module-1)+4;
-	  ipar_az = 6*(module-1)+5;
+	  double ulocal = T->HitXlocal[ihit]; //"U" local: generalized "X"
+	  double vlocal = T->HitYlocal[ihit]; //"V" local: generalized "Y"
+	  
+	  double det = mod_Pxu[module]*mod_Pyv[module] - mod_Pyu[module]*mod_Pxv[module]; //cos( alphau) * sin(alphav) - sin(alphau)*cos(alphav) = 1 for alphau = 0, alphav = 90
+	  
+	  double xlocal = (mod_Pyv[module]*ulocal - mod_Pyu[module]*vlocal)/det; //(sin(alphav)*U - sin(alphau)*V)/det = U = X for alphau = 0, alphav = 90
+	  double ylocal = (mod_Pxu[module]*vlocal - mod_Pxv[module]*ulocal)/det; //(cos(alphau)*V - cos(alphav)*U)/det = V = Y for alphau = 0, alphav = 90
+
+	  TVector3 hitpos_local(xlocal,ylocal,0);
+	  TRotation R;
+	  R.RotateX( mod_ax[module] );
+	  R.RotateY( mod_ay[module] );
+	  R.RotateZ( mod_az[module] );
+	
+	  TVector3 modcenter_global( mod_x0[module],mod_y0[module],mod_z0[module] );
+	  TVector3 hitpos_global = modcenter_global + R*hitpos_local;
+	
+	  double sigma = 0.1;
+	  double weight = pow(sigma_hitpos,-2);
+
+	  weight = 1.0;
+	  
+	  sumX += hitpos_global.X()*weight;
+	  sumY += hitpos_global.Y()*weight;
+	  sumZ += hitpos_global.Z()*weight;
+	  sumXZ += hitpos_global.X()*hitpos_global.Z()*weight;
+	  sumYZ += hitpos_global.Y()*hitpos_global.Z()*weight;
+	  sumZ2 += pow(hitpos_global.Z(),2)*weight;	  
+
 	}
+
+	double nhits = double(T->TrackNhits);
+	
+	double denom = (sumZ2*nhits - pow(sumZ,2));
+	xptrack = (nhits*sumXZ - sumX*sumZ)/denom;
+	yptrack = (nhits*sumYZ - sumY*sumZ)/denom;
+	xtrack = (sumZ2*sumX - sumZ*sumXZ)/denom;
+	ytrack = (sumZ2*sumY - sumZ*sumYZ)/denom;
+
+	// cout << "Old track (xp,yp,x,y)=(" << T->TrackXp << ", " << T->TrackYp << ", " << T->TrackX << ", " << T->TrackY
+	//      << ")" << endl;
+	// cout << "New track (xp,yp,x,y)=(" << xptrack << ", " << yptrack << ", " << xtrack << ", " << ytrack << ")" << endl;
+	
       }
 	
+      if( nevent < NMAX && iter == niter ){ //fill TRACK arrays 
+	NTRACKS++;
+	XTRACK.push_back( xtrack );
+	XPTRACK.push_back( xptrack );
+	YTRACK.push_back( ytrack );
+	YPTRACK.push_back( yptrack );
+	TRACKNHITS.push_back( T->TrackNhits );
+      }
+    
+      //we want to modify this to compute the CHANGE in module parameters required to minimize chi^2;
+      // so the starting parameters are taken as given.
+      // x_0 --> x_0 + dx0
+      // y_0 --> y_0 + dy0
+      // z_0 --> z_0 + dz0
+      // ax --> ax + dax
+      // ay --> ay + day
+      // az --> az + daz
+      // The coefficients of the changes in the parameters should stay the same as those of the parameters themselves, but the RHS needs modified:
+      vector<int> HITMODTEMP;
+      vector<double> HITXTEMP,HITYTEMP;
+      
+      for( int ihit=0; ihit<T->TrackNhits; ihit++ ){
+	int module = T->HitModule[ihit];
+	double sigx = T->HitSigX[ihit];
+	double sigy = T->HitSigY[ihit];
+	double ulocal = T->HitXlocal[ihit]; //"U" local: generalized "X"
+	double vlocal = T->HitYlocal[ihit]; //"V" local: generalized "Y"
+
+	double det = mod_Pxu[module]*mod_Pyv[module] - mod_Pyu[module]*mod_Pxv[module]; //cos( alphau) * sin(alphav) - sin(alphau)*cos(alphav) = 1 for alphau = 0, alphav = 90
 	
-      int ipar[6] = {ipar_x0, ipar_y0, ipar_z0, ipar_ax, ipar_ay, ipar_az };
+	double xlocal = (mod_Pyv[module]*ulocal - mod_Pyu[module]*vlocal)/det; //(sin(alphav)*U - sin(alphau)*V)/det = U = X for alphau = 0, alphav = 90
+	double ylocal = (mod_Pxu[module]*vlocal - mod_Pxv[module]*ulocal)/det; //(cos(alphau)*V - cos(alphav)*U)/det = V = Y for alphau = 0, alphav = 90
+
+	//On subsequent iterations after the first, we want to fit the changes in the parameters relative to the previous iteration. How can we do this properly?
+	//We need to come up with a new definition for the "local" coordinates that properly accounts for the new coordinate system:
+	//We already re-fit the track; this means that 
+
+	if( nevent < NMAX && iter == niter ){
+	  HITMODTEMP.push_back( module );
+	  HITXTEMP.push_back( ulocal );
+	  HITYTEMP.push_back( vlocal );
+	}
+	TVector3 hitpos_local(xlocal,ylocal,0);
+	TRotation R;
+	R.RotateX( mod_ax[module] );
+	R.RotateY( mod_ay[module] );
+	R.RotateZ( mod_az[module] );
+	
+	TVector3 modcenter_global( mod_x0[module],mod_y0[module],mod_z0[module] );
+	TVector3 hitpos_global = modcenter_global + R*hitpos_local;
+	
+	double sigma = 0.1;
+	double weight = pow(sigma_hitpos,-2);
+	
+	int ipar_x0 = 6*module;
+	int ipar_y0 = 6*module+1;
+	int ipar_z0 = 6*module+2;
+	int ipar_ax = 6*module+3;
+	int ipar_ay = 6*module+4;
+	int ipar_az = 6*module+5;
+
+	int ipar_fix[3] = {3*module,3*module+1,3*module+2};
+	
+	
+	if( refmod >= 0 && refmod < nmodules ){
+	  if( module > refmod ){
+	    ipar_x0 = 6*(module-1);
+	    ipar_y0 = 6*(module-1)+1;
+	    ipar_z0 = 6*(module-1)+2;
+	    ipar_ax = 6*(module-1)+3;
+	    ipar_ay = 6*(module-1)+4;
+	    ipar_az = 6*(module-1)+5;
+
+	    ipar_fix[0] = 3*(module-1);
+	    ipar_fix[1] = 3*(module-1)+1;
+	    ipar_fix[2] = 3*(module-1)+2;
+	  }
+	}
+	
+	
+	int ipar[6] = {ipar_x0, ipar_y0, ipar_z0, ipar_ax, ipar_ay, ipar_az };
       // for( int idx=0; idx<6; idx++ ){
       //   ipar[idx] = 6*module + idx;
       // }
-
+	
       //Replace "local" coordinates with rotated local coordinates on iterations after first:
       // if( iter > 0 ){
       //   xlocal = hitpos_global.X() - modcenter_global.X();
       //   ylocal = hitpos_global.Y() - modcenter_global.Y();
       // }
 	
-      double xcoeff[6] = {1.0, 0.0, -xptrack, -xptrack*ylocal, xptrack*xlocal, -ylocal };
-      double ycoeff[6] = {0.0, 1.0, -yptrack, -yptrack*ylocal, yptrack*xlocal, xlocal };
+	double xcoeff[6] = {1.0, 0.0, -xptrack, -xptrack*ylocal, xptrack*xlocal, -ylocal };
+	double ycoeff[6] = {0.0, 1.0, -yptrack, -yptrack*ylocal, yptrack*xlocal, xlocal };
 
       //double xRHS = xtrack + xptrack * hitpos_global.Z() - hitpos_global.X();
       //double yRHS = ytrack + yptrack * hitpos_global.Z() - hitpos_global.Y();
 
 	
 	
-      if( module != refmod || refmod < 0 || refmod >= nmodules ){ 
-	for( int i=0; i<6; i++ ){
-	  for( int j=0; j<6; j++ ){
-	    M(ipar[i], ipar[j]) += weight*(xcoeff[i]*xcoeff[j] + ycoeff[i]*ycoeff[j]);
+	if( module != refmod || refmod < 0 || refmod >= nmodules ){ 
+	  for( int i=0; i<6; i++ ){
+	    for( int j=0; j<6; j++ ){
+	      M(ipar[i], ipar[j]) += weight*(xcoeff[i]*xcoeff[j] + ycoeff[i]*ycoeff[j]);
+	    }
+	    b(ipar[i]) += weight*(xcoeff[i]*(xtrack - xlocal) + ycoeff[i]*(ytrack-ylocal));
+	    //b(ipar[i]) += xcoeff[i]*xRHS + ycoeff[i]*yRHS;
 	  }
-	  b(ipar[i]) += weight*(xcoeff[i]*(xtrack - xlocal) + ycoeff[i]*(ytrack-ylocal));
-	  //b(ipar[i]) += xcoeff[i]*xRHS + ycoeff[i]*yRHS;
+
+	  for( int i=0; i<3; i++ ){
+	    for( int j=0; j<3; j++ ){
+	      Mpos( ipar_fix[i], ipar_fix[j] ) += weight*(xcoeff[i]*xcoeff[j]+ycoeff[i]*ycoeff[j]);
+	      Mrot( ipar_fix[i], ipar_fix[j] ) += weight*(xcoeff[i+3]*xcoeff[j+3]+ycoeff[i+3]*ycoeff[j+3]);
+	    }
+	    //For the positional offsets, we need to subtract the sum of all alphax, alphay, alphaz dependent terms from the RHS:
+	    // so this is like -xcoeff[i]*(xcoeff[3]*ax + xcoeff[4]*ay + xcoeff[5]*az)-ycoeff[i]*(ycoeff[3]*ax+ycoeff[4]*ay+ycoeff[5]*az)
+	    //For the rotational offsets, the opposite is true
+	    bpos( ipar_fix[i] ) += weight*( xcoeff[i]*(xtrack-xlocal - (xcoeff[3]*mod_ax[module]+xcoeff[4]*mod_ay[module]+xcoeff[5]*mod_az[module])) +
+					    ycoeff[i]*(ytrack-ylocal - (ycoeff[3]*mod_ax[module]+ycoeff[4]*mod_ay[module]+ycoeff[5]*mod_az[module])) );
+	    brot( ipar_fix[i] ) += weight*( xcoeff[i+3]*(xtrack-xlocal - (xcoeff[0]*mod_x0[module]+xcoeff[1]*mod_y0[module]+xcoeff[2]*mod_z0[module])) +
+					    ycoeff[i+3]*(ytrack-ylocal - (ycoeff[0]*mod_x0[module]+ycoeff[1]*mod_y0[module]+ycoeff[2]*mod_z0[module])) );
+	  }
 	}
       }
+
+      if( nevent < NMAX && iter == niter ){
+	HITMOD.push_back( HITMODTEMP );
+	HITX.push_back( HITXTEMP );
+	HITY.push_back( HITYTEMP );
+      }
+    }
+    
+    
+    // if( offsetsonlyflag  != 0 ){
+    //   for( int ipar=0; ipar<nparam; ipar++ ){
+    // 	bool isroti = (ipar%6 > 2);
+    // 	for( int jpar=0; jpar<nparam; jpar++ ){
+    // 	  bool isrotj = (jpar%6 > 2);
+    // 	  if( jpar != ipar ){
+    // 	    if( isroti || isrotj ){
+    // 	      M(ipar,jpar)=0.0;
+    // 	      M(jpar,ipar) = 0.0;
+    // 	    }
+    // 	  }
+    // 	}
+    // 	if( isroti ){
+    // 	  //b(ipar) = 0.0;
+    // 	  M(ipar,ipar) = 1.0;
+    // 	}
+    //   }
+      
+    // } else if( rotationsonlyflag != 0 ){
+    //   for( int ipar=0; ipar<nparam; ipar++ ){
+    // 	bool isroti = (ipar%6 > 2);
+    // 	for( int jpar=0; jpar<nparam; jpar++ ){
+    // 	  bool isrotj = (jpar%6 > 2);
+    // 	  if( jpar != ipar ){
+    // 	    if( !isroti || !isrotj ){
+    // 	      M(ipar,jpar)=0.0;
+    // 	      M(jpar,ipar) = 0.0;
+    // 	    }
+    // 	  }
+    // 	}
+    // 	if( !isroti ){
+    // 	  //b(ipar) = 0.0;
+    // 	  M(ipar,ipar) = 1.0;
+    // 	}
+    //   }
+    // }
+
+    // if( fixz > 0 ){
+    //   for( int ipar=0; ipar<nparam; ipar++ ){
+    // 	bool ismodzi = (ipar%6 == 2);
+    // 	for( int jpar=0; jpar<nparam; jpar++ ){
+    // 	  bool ismodzj = (jpar%6 == 2);
+    // 	  if( jpar != ipar ){
+    // 	    if( ismodzi || ismodzj ){
+    // 	      M(ipar,jpar)=0.0;
+    // 	      M(jpar,ipar)=0.0;
+    // 	    }
+    // 	  }
+    // 	}
+    // 	if( ismodzi ){
+    // 	  b(ipar) = 1.0;
+    // 	  M(ipar,ipar) = 1.0;
+    // 	}
+    //   } 
+    // }
+
+    // if( fixax > 0 ){
+    //   for( int ipar=0; ipar<nparam; ipar++ ){
+    // 	bool ismodzi = (ipar%6 == 3);
+    // 	for( int jpar=0; jpar<nparam; jpar++ ){
+    // 	  bool ismodzj = (jpar%6 == 3);
+    // 	  if( jpar != ipar ){
+    // 	    if( ismodzi || ismodzj ){
+    // 	      M(ipar,jpar)=0.0;
+    // 	      M(jpar,ipar)=0.0;
+    // 	    }
+    // 	  }
+    // 	}
+    // 	if( ismodzi ){
+    // 	  b(ipar) = 1.0;
+    // 	  M(ipar,ipar) = 1.0;
+    // 	}
+    //   }
+    // }
+
+    // if( fixay > 0 ){
+    //   for( int ipar=0; ipar<nparam; ipar++ ){
+    // 	bool ismodzi = (ipar%6 == 4);
+    // 	for( int jpar=0; jpar<nparam; jpar++ ){
+    // 	  bool ismodzj = (jpar%6 == 4);
+    // 	  if( jpar != ipar ){
+    // 	    if( ismodzi || ismodzj ){
+    // 	      M(ipar,jpar)=0.0;
+    // 	      M(jpar,ipar)=0.0;
+    // 	    }
+    // 	  }
+    // 	}
+    // 	if( ismodzi ){
+    // 	  b(ipar) = 0.0;
+    // 	  M(ipar,ipar) = 1.0;
+    // 	}
+    //   }
+      
+    // }
+
+    // if( fixaz > 0 ){
+    //   for( int ipar=0; ipar<nparam; ipar++ ){
+    // 	bool ismodzi = (ipar%6 == 5);
+    // 	for( int jpar=0; jpar<nparam; jpar++ ){
+    // 	  bool ismodzj = (jpar%6 == 5);
+    // 	  if( jpar != ipar ){
+    // 	    if( ismodzi || ismodzj ){
+    // 	      M(ipar,jpar)=0.0;
+    // 	      M(jpar,ipar)=0.0;
+    // 	    }
+    // 	  }
+    // 	}
+    // 	if( ismodzi ){
+    // 	  b(ipar) = 0.0;
+    // 	  M(ipar,ipar) = 1.0;
+    // 	}
+    //   }
+      
+    // }
+  
+    
+    //Okay, wish me luck:
+
+    //M.Print();
+    //b.Print();
+
+    cout << "Matrix symmetric? = " << M.IsSymmetric() << endl;
+
+    // Here is an idea: to fit the changes of the parameters instead of the parameters themselves, we subtract from the RHS another vector:
+    TVectorD PreviousSolution(nparam);
+    TVectorD PreviousSolution_posonly(nparam_pos);
+    TVectorD PreviousSolution_rotonly(nparam_rot);
+    for( int imodule=0; imodule<nmodules; imodule++ ){
+      int ipar_x0 = imodule*6;
+      int ipar_y0 = imodule*6+1;
+      int ipar_z0 = imodule*6+2;
+      int ipar_ax = imodule*6+3;
+      int ipar_ay = imodule*6+4;
+      int ipar_az = imodule*6+5;
+
+      int iparx = 3*imodule;
+      int ipary = 3*imodule+1;
+      int iparz = 3*imodule+2;
+      
+     
+      if( refmod >= 0 && refmod < nmodules && imodule > refmod ){
+	ipar_x0 = 6*(imodule-1);
+	ipar_y0 = 6*(imodule-1)+1;
+	ipar_z0 = 6*(imodule-1)+2;
+	ipar_ax = 6*(imodule-1)+3;
+	ipar_ay = 6*(imodule-1)+4;
+	ipar_az = 6*(imodule-1)+5;
+
+	iparx = 3*(imodule-1);
+	ipary = 3*(imodule-1)+1;
+	iparz = 3*(imodule-1)+2;
+      }
+
+      if( imodule != refmod ){
+	PreviousSolution(ipar_x0) = mod_x0[imodule];
+	PreviousSolution(ipar_y0) = mod_y0[imodule];
+	PreviousSolution(ipar_z0) = mod_z0[imodule];
+	PreviousSolution(ipar_ax) = mod_ax[imodule];
+	PreviousSolution(ipar_ay) = mod_ay[imodule];
+	PreviousSolution(ipar_az) = mod_az[imodule];
+
+	PreviousSolution_posonly(iparx) = mod_x0[imodule];
+	PreviousSolution_posonly(ipary) = mod_y0[imodule];
+	PreviousSolution_posonly(iparz) = mod_z0[imodule];
+
+	PreviousSolution_rotonly(iparx) = mod_ax[imodule];
+	PreviousSolution_rotonly(ipary) = mod_ay[imodule];
+	PreviousSolution_rotonly(iparz) = mod_az[imodule];
+      }
+
+     
+      
     }
 
-    if( nevent < NMAX ){
-      HITMOD.push_back( HITMODTEMP );
-      HITX.push_back( HITXTEMP );
-      HITY.push_back( HITYTEMP );
+    TVectorD bshift = b - M*PreviousSolution;
+    TVectorD bshiftpos = bpos - Mpos*PreviousSolution_posonly;
+    TVectorD bshiftrot = brot - Mrot*PreviousSolution_rotonly;
+    
+    TVectorD Solution(nparam);
+    TVectorD Solution_posonly(nparam_pos);
+    TVectorD Solution_rotonly(nparam_rot);
+    
+    M.Invert();
+    Mpos.Invert();
+    Mrot.Invert();
+    
+    if( iter >= 0 ){
+      Solution = M*bshift;
+      Solution_posonly = Mpos*bshiftpos;
+      Solution_rotonly = Mrot*bshiftrot;
+    } else {
+      Solution = M*b;
+      Solution_posonly = Mpos * bpos;
+      Solution_rotonly = Mrot * brot;
+    }
+
+    
+    
+    //M.Print();
+    
+    //Solution.Print();
+
+    map<int,double> prev_x0 = mod_x0;
+    map<int,double> prev_y0 = mod_y0;
+    map<int,double> prev_z0 = mod_z0;
+    map<int,double> prev_ax = mod_ax;
+    map<int,double> prev_ay = mod_ay;
+    map<int,double> prev_az = mod_az;
+
+    double startpar[6*nmodules];
+  
+    for( int imodule=0; imodule<nmodules; imodule++ ){
+      int ipar_x0 = imodule*6;
+      int ipar_y0 = imodule*6+1;
+      int ipar_z0 = imodule*6+2;
+      int ipar_ax = imodule*6+3;
+      int ipar_ay = imodule*6+4;
+      int ipar_az = imodule*6+5;
+
+      int iparx = 3*imodule;
+      int ipary = 3*imodule+1;
+      int iparz = 3*imodule+2;
+      
+      if( refmod >= 0 && refmod < nmodules && imodule > refmod ){
+	ipar_x0 = 6*(imodule-1);
+	ipar_y0 = 6*(imodule-1)+1;
+	ipar_z0 = 6*(imodule-1)+2;
+	ipar_ax = 6*(imodule-1)+3;
+	ipar_ay = 6*(imodule-1)+4;
+	ipar_az = 6*(imodule-1)+5;
+
+	iparx = 3*(imodule-1);
+	ipary = 3*(imodule-1)+1;
+	iparz = 3*(imodule-1)+2;
+      }
+
+      //now the solution represents the CHANGE in each parameter from the previous iteration or, on the first iteration the starting solution:
+      
+      if( imodule != refmod ){
+	mod_x0[imodule] = Solution(ipar_x0);
+	mod_y0[imodule] = Solution(ipar_y0);
+	mod_z0[imodule] = Solution(ipar_z0);
+	mod_ax[imodule] = Solution(ipar_ax);
+	mod_ay[imodule] = Solution(ipar_ay);
+	mod_az[imodule] = Solution(ipar_az);
+
+	if( iter >= 0 ){
+	  mod_x0[imodule] += prev_x0[imodule];
+	  mod_y0[imodule] += prev_y0[imodule];
+	  mod_z0[imodule] += prev_z0[imodule];
+	  mod_ax[imodule] += prev_ax[imodule];
+	  mod_ay[imodule] += prev_ay[imodule];
+	  mod_az[imodule] += prev_az[imodule];
+	} 
+	
+	if( offsetsonlyflag != 0 ){
+	  mod_x0[imodule] = Solution_posonly(iparx) + prev_x0[imodule];
+	  mod_y0[imodule] = Solution_posonly(ipary) + prev_y0[imodule];
+	  mod_z0[imodule] = Solution_posonly(iparz) + prev_z0[imodule];
+	  
+	  mod_ax[imodule] = prev_ax[imodule];
+	  mod_ay[imodule] = prev_ay[imodule];
+	  mod_az[imodule] = prev_az[imodule];
+	}
+
+	if( rotationsonlyflag != 0 ){
+	  mod_x0[imodule] = prev_x0[imodule];
+	  mod_y0[imodule] = prev_y0[imodule];
+	  mod_z0[imodule] = prev_z0[imodule];
+
+	  mod_ax[imodule] = Solution_rotonly(iparx) + prev_ax[imodule];
+	  mod_ay[imodule] = Solution_rotonly(ipary) + prev_ay[imodule];
+	  mod_az[imodule] = Solution_rotonly(iparz) + prev_az[imodule];
+	  
+	}
+
+	
+	
+	//Strictly speaking, I don't think this is necessary:
+	PreviousSolution(ipar_x0) = mod_x0[imodule];
+	PreviousSolution(ipar_y0) = mod_y0[imodule];
+	PreviousSolution(ipar_z0) = mod_z0[imodule];
+	PreviousSolution(ipar_ax) = mod_ax[imodule];
+	PreviousSolution(ipar_ay) = mod_ay[imodule];
+	PreviousSolution(ipar_az) = mod_az[imodule];
+	
+	//	}
+	mod_dx0[imodule] = sqrt(fabs(M(ipar_x0,ipar_x0)));
+	mod_dy0[imodule] = sqrt(fabs(M(ipar_y0,ipar_y0)));
+	mod_dz0[imodule] = sqrt(fabs(M(ipar_z0,ipar_z0)));
+	mod_dax[imodule] = sqrt(fabs(M(ipar_ax,ipar_ax)));
+	mod_day[imodule] = sqrt(fabs(M(ipar_ay,ipar_ay)));
+	mod_daz[imodule] = sqrt(fabs(M(ipar_az,ipar_az)));
+      }
+
+      for( int ipar=0; ipar<6; ipar++ ){
+	startpar[imodule*6+ipar] = 0.0;
+      }
+    }
+    
+    cout << "ending solution: " << endl;
+    for( map<int,double>::iterator imod=mod_x0.begin(); imod!=mod_x0.end(); ++imod ){
+      int module = imod->first;
+      cout << "Module " << module << ": (x0,y0,z0,ax,ay,az)=("
+	   << mod_x0[module] << ", " << mod_y0[module] << ", " << mod_z0[module] << ", "
+	   << mod_ax[module] << ", " << mod_ay[module] << ", " << mod_az[module] << ")" << endl;
+    }
+    for( map<int,double>::iterator imod=mod_x0.begin(); imod!=mod_x0.end(); ++imod ){
+      int module = imod->first;
+      cout << "(Change from previous)/sigma: (dx0,dy0,dz0,dax,day,daz)=("
+	   << (mod_x0[module]-prev_x0[module])/mod_dx0[module] << ", "
+	   << (mod_y0[module]-prev_y0[module])/mod_dy0[module] << ", "
+	   << (mod_z0[module]-prev_z0[module])/mod_dz0[module] << ", "
+	   << (mod_ax[module]-prev_ax[module])/mod_dax[module] << ", "
+	   << (mod_ay[module]-prev_ay[module])/mod_day[module] << ", "
+	   << (mod_az[module]-prev_az[module])/mod_daz[module] << ")" << endl;
     }
   }
   
-
-  if( offsetsonlyflag  != 0 ){
-    for( int ipar=0; ipar<nparam; ipar++ ){
-      bool isroti = (ipar%6 > 2);
-      for( int jpar=0; jpar<nparam; jpar++ ){
-	bool isrotj = (jpar%6 > 2);
-	if( jpar != ipar ){
-	  if( isroti || isrotj ){
-	    M(ipar,jpar)=0.0;
-	    M(jpar,ipar) = 0.0;
-	  }
-	}
-      }
-      if( isroti ){
-	b(ipar) = 0.0;
-	M(ipar,ipar) = 1.0;
-      }
-    }
-      
-  } else if( rotationsonlyflag != 0 ){
-    for( int ipar=0; ipar<nparam; ipar++ ){
-      bool isroti = (ipar%6 > 2);
-      for( int jpar=0; jpar<nparam; jpar++ ){
-	bool isrotj = (jpar%6 > 2);
-	if( jpar != ipar ){
-	  if( !isroti || !isrotj ){
-	    M(ipar,jpar)=0.0;
-	    M(jpar,ipar) = 0.0;
-	  }
-	}
-      }
-      if( !isroti ){
-	b(ipar) = 0.0;
-	M(ipar,ipar) = 1.0;
-      }
-    }
-  }
-
-  if( fixz > 0 ){
-    for( int ipar=0; ipar<nparam; ipar++ ){
-      bool ismodzi = (ipar%6 == 2);
-      for( int jpar=0; jpar<nparam; jpar++ ){
-	bool ismodzj = (jpar%6 == 2);
-	if( jpar != ipar ){
-	  if( ismodzi || ismodzj ){
-	    M(ipar,jpar)=0.0;
-	    M(jpar,ipar)=0.0;
-	  }
-	}
-      }
-      if( ismodzi ){
-	b(ipar) = 0.0;
-	M(ipar,ipar) = 1.0;
-      }
-    } 
-  }
-
-  if( fixax > 0 ){
-    for( int ipar=0; ipar<nparam; ipar++ ){
-      bool ismodzi = (ipar%6 == 3);
-      for( int jpar=0; jpar<nparam; jpar++ ){
-	bool ismodzj = (jpar%6 == 3);
-	if( jpar != ipar ){
-	  if( ismodzi || ismodzj ){
-	    M(ipar,jpar)=0.0;
-	    M(jpar,ipar)=0.0;
-	  }
-	}
-      }
-      if( ismodzi ){
-	b(ipar) = 0.0;
-	M(ipar,ipar) = 1.0;
-      }
-    }
-  }
-
-  if( fixay > 0 ){
-    for( int ipar=0; ipar<nparam; ipar++ ){
-      bool ismodzi = (ipar%6 == 4);
-      for( int jpar=0; jpar<nparam; jpar++ ){
-	bool ismodzj = (jpar%6 == 4);
-	if( jpar != ipar ){
-	  if( ismodzi || ismodzj ){
-	    M(ipar,jpar)=0.0;
-	    M(jpar,ipar)=0.0;
-	  }
-	}
-      }
-      if( ismodzi ){
-	b(ipar) = 0.0;
-	M(ipar,ipar) = 1.0;
-      }
-    }
-      
-  }
-
-  if( fixaz > 0 ){
-    for( int ipar=0; ipar<nparam; ipar++ ){
-      bool ismodzi = (ipar%6 == 5);
-      for( int jpar=0; jpar<nparam; jpar++ ){
-	bool ismodzj = (jpar%6 == 5);
-	if( jpar != ipar ){
-	  if( ismodzi || ismodzj ){
-	    M(ipar,jpar)=0.0;
-	    M(jpar,ipar)=0.0;
-	  }
-	}
-      }
-      if( ismodzi ){
-	b(ipar) = 0.0;
-	M(ipar,ipar) = 1.0;
-      }
-    }
-      
-  }
+  if( (offsetsonlyflag == 0 && rotationsonlyflag == 0) ){
     
-  //Okay, wish me luck:
-
-  //M.Print();
-  //b.Print();
-
-  cout << "Matrix symmetric? = " << M.IsSymmetric() << endl;
-    
-  TVectorD Solution = M.Invert()*b;
-
-  //M.Print();
-    
-  //Solution.Print();
-
-  map<int,double> prev_x0 = mod_x0;
-  map<int,double> prev_y0 = mod_y0;
-  map<int,double> prev_z0 = mod_z0;
-  map<int,double> prev_ax = mod_ax;
-  map<int,double> prev_ay = mod_ay;
-  map<int,double> prev_az = mod_az;
-
-  double startpar[6*nmodules];
-  
-  for( int imodule=0; imodule<nmodules; imodule++ ){
-    int ipar_x0 = imodule*6;
-    int ipar_y0 = imodule*6+1;
-    int ipar_z0 = imodule*6+2;
-    int ipar_ax = imodule*6+3;
-    int ipar_ay = imodule*6+4;
-    int ipar_az = imodule*6+5;
-
-    if( refmod >= 0 && refmod < nmodules && imodule > refmod ){
-      ipar_x0 = 6*(imodule-1);
-      ipar_y0 = 6*(imodule-1)+1;
-      ipar_z0 = 6*(imodule-1)+2;
-      ipar_ax = 6*(imodule-1)+3;
-      ipar_ay = 6*(imodule-1)+4;
-      ipar_az = 6*(imodule-1)+5;
-    }
-
-    //now the solution represents the CHANGE in each parameter from the previous iteration or, on the first iteration the starting solution:
-      
-    if( imodule != refmod ){
-      // mod_x0[imodule] = Solution(ipar_x0)+prev_x0[imodule];
-      // mod_y0[imodule] = Solution(ipar_y0)+prev_y0[imodule];
-      // mod_z0[imodule] = Solution(ipar_z0)+prev_z0[imodule];
-      // mod_ax[imodule] = Solution(ipar_ax)+prev_ax[imodule];
-      // mod_ay[imodule] = Solution(ipar_ay)+prev_ay[imodule];
-      // mod_az[imodule] = Solution(ipar_az)+prev_az[imodule];
-      mod_x0[imodule] = Solution(ipar_x0);
-      mod_y0[imodule] = Solution(ipar_y0);
-      mod_z0[imodule] = Solution(ipar_z0);
-      mod_ax[imodule] = Solution(ipar_ax);
-      mod_ay[imodule] = Solution(ipar_ay);
-      mod_az[imodule] = Solution(ipar_az);
-      mod_dx0[imodule] = sqrt(fabs(M(ipar_x0,ipar_x0)));
-      mod_dy0[imodule] = sqrt(fabs(M(ipar_y0,ipar_y0)));
-      mod_dz0[imodule] = sqrt(fabs(M(ipar_z0,ipar_z0)));
-      mod_dax[imodule] = sqrt(fabs(M(ipar_ax,ipar_ax)));
-      mod_day[imodule] = sqrt(fabs(M(ipar_ay,ipar_ay)));
-      mod_daz[imodule] = sqrt(fabs(M(ipar_az,ipar_az)));
-    }
-
-    for( int ipar=0; ipar<6; ipar++ ){
-      startpar[imodule*6+ipar] = 0.0;
-    }
-  }
-    
-  cout << "ending solution: " << endl;
-  for( map<int,double>::iterator imod=mod_x0.begin(); imod!=mod_x0.end(); ++imod ){
-    int module = imod->first;
-    cout << "Module " << module << ": (x0,y0,z0,ax,ay,az)=("
-	 << mod_x0[module] << ", " << mod_y0[module] << ", " << mod_z0[module] << ", "
-	 << mod_ax[module] << ", " << mod_ay[module] << ", " << mod_az[module] << ")" << endl;
-  }
-  for( map<int,double>::iterator imod=mod_x0.begin(); imod!=mod_x0.end(); ++imod ){
-    int module = imod->first;
-    cout << "(Change from previous)/sigma: (dx0,dy0,dz0,dax,day,daz)=("
-	 << (mod_x0[module]-prev_x0[module])/mod_dx0[module] << ", "
-	 << (mod_y0[module]-prev_y0[module])/mod_dy0[module] << ", "
-	 << (mod_z0[module]-prev_z0[module])/mod_dz0[module] << ", "
-	 << (mod_ax[module]-prev_ax[module])/mod_dax[module] << ", "
-	 << (mod_ay[module]-prev_ay[module])/mod_day[module] << ", "
-	 << (mod_az[module]-prev_az[module])/mod_daz[module] << ")" << endl;
-  }
-
-  if( offsetsonlyflag == 0 && rotationsonlyflag == 0 ){
-  
     TMinuit *ExtraFit = new TMinuit( 6*nmodules );
 
     ExtraFit->SetFCN( CHI2_FCN );
