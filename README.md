@@ -7,9 +7,9 @@ GEM_reconstruct.C: main clustering/hit reconstruction/tracking code; developed f
 
 GEM_reconstruct_HallAtest.C: same as GEM_reconstruct.C, but specialized for analysis of Hall A GEM test data from 2016. Uses additional information from the calorimeter that was part of the test; computes simple sum of calorimeter ADC values.
 
-GEM_align.C: Alignment code; takes the output of GEM_reconstruct.C as input, determines best set of translational (x0, y0, z0) and rotational (alpha_x, alpha_y, alpha_z) "yaw, pitch, roll" offests to minimize chi-squared of straight line tracks.
+GEM_reconstruct_standalone_consolidated.C: consolidated version with capability to analyze three different data formats: Hall A GEM test 2016, INFN cosmic stand, UVA EEL cosmic stand. THIS IS THE VERSION THAT WILL BE DEVELOPED AND SUPPORTED GOING FORWARD!
 
-plot_GEM
+GEM_align.C: Alignment code; takes the output of GEM_reconstruct.C as input, determines best set of translational (x0, y0, z0) and rotational (alpha_x, alpha_y, alpha_z) "yaw, pitch, roll" offests to minimize chi-squared of straight line tracks.
 
 Usage example:
 
@@ -44,6 +44,6 @@ I have also added two utility macros:
 plot_GEMrun_summary.C
 plot_GEMrun_summary_HallA.C
 
-which can be used to generate a PDF file with a nice group of summary plots of the analysis. 
+which can be used to generate a PDF file with a nice "standard" group of summary plots of the analysis. 
 
 Detailed documentation of configuration parameters is forthcoming. In the mean time, read the source code.
