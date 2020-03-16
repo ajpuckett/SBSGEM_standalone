@@ -16,7 +16,7 @@
 #include <map>
 #include <string>
 #include "TString.h"
-#include "TClonesArray.h"
+//#include "TClonesArray.h"
 #include "TObjArray.h"
 #include "TObjString.h"
 #include "TCanvas.h"
@@ -1562,6 +1562,39 @@ void find_tracks( map<int,clusterdata_t> mod_clusters, trackdata_t &trackdata ){
   }
 }
 
+int get_nearest_module( trackdata_t trdata, int ilayer, int itrack=0 ){
+  int bestmod = -1;
+  double r2min = 0.0;
+  
+  if( itrack >= 0 && itrack < trdata.ntracks && ilayer >= 0 && ilayer < nlayers ){
+    //for( int ilayer=0; ilayer<nlayers; ilayer++ ){
+
+    //Check if this layer is on the fitted track. If so, then there is no ambiguity:
+    for( int ihit=0; ihit<trdata.nhitsontrack[itrack]; ihit++ ){
+      int module = trdata.modlist_track[itrack][ihit];
+      int layer = mod_layer[module];
+      if( layer == ilayer ) return module;
+    }
+    
+    //If we make it to this point, then ilayer is NOT on the track: find closest module to the track in the layer in question:
+    for( int imodule=0; imodule<nmodules; imodule++ ){
+      if( mod_layer[imodule] == ilayer ){ //then module is in this tracking layer:
+	double xtrtemp = trdata.Xtrack[itrack] + mod_z0[imodule]*trdata.Xptrack[itrack];
+	double ytrtemp = trdata.Ytrack[itrack] + mod_z0[imodule]*trdata.Yptrack[itrack];
+	
+	double r2mod = pow(xtrtemp-mod_x0[imodule],2)+pow(ytrtemp-mod_y0[imodule],2);
+	
+	if( bestmod == -1 || r2mod < r2min ){
+	  bestmod = imodule;
+	  r2min = r2mod;
+	}
+      }
+    }
+  }
+  
+  return bestmod; 
+}
+
 void GEM_reconstruct( const char *filename, const char *configfilename, const char *outfilename="temp.root" ){
 
   //Initialize walk correction parameters:
@@ -2262,6 +2295,32 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
   TH1D *hclustADCsum_x = new TH1D("hclustADCsum_x","ADC sum in X strips",200,0.0,100000.0);
   TH1D *hclustADCsum_y = new TH1D("hclustADCsum_y","ADC sum in Y strips",200,0.0,100000.0);
 
+  TH2D *hclustwidth_x_module = new TH2D("hclustwidth_x_module","Width of clusters in X strips",maxnstripXpercluster,0.5,maxnstripXpercluster+0.5,nmodules,-0.5,nmodules-0.5);
+  TH2D *hclustwidth_y_module = new TH2D("hclustwidth_y_module","Width of clusters in Y strips",maxnstripYpercluster,0.5,maxnstripYpercluster+0.5,nmodules,-0.5,nmodules-0.5);
+
+  TH2D *hmaxtimebin_xstrip_module = new TH2D("hmaxtimebin_xstrip_module","Max time bin for max X strip on cluster in track", nADCsamples,-0.5,nADCsamples-0.5,nmodules,-0.5,nmodules-0.5);
+  TH2D *hmaxtimebin_ystrip_module = new TH2D("hmaxtimebin_ystrip_module","Max time bin for max Y strip on cluster in track", nADCsamples,-0.5,nADCsamples-0.5,nmodules,-0.5,nmodules-0.5);
+  //TH2D *hmaxtimebin_xclust_module = new TH2D("hmaxtimebin_xclust_module","Max time bin for cluster-summed X samples on cluster in track", nADCsamples,-0.5,nADCsamples-0.5,nmodules,-0.5,nmodules-0.5);
+  //TH2D *hmaxtimebin_yclust_module = new TH2D("hmaxtimebin_yclust_module","Max time bin for cluster-summed Y samples on cluster in track", nADCsamples,-0.5,nADCsamples-0.5);
+
+  TH2D *hADCasym_vs_module = new TH2D("hADCasym_vs_module","(ADCX-ADCY)/(ADCX+ADCY) asymmetry by module, clusters on track",nmodules,-0.5,nmodules-0.5,200,-1.05,1.05);
+  TH2D *hdT_vs_module = new TH2D("hdT_vs_module","t_{x} - t_{y} (ns), clusters on track",nmodules,-0.5,nmodules-0.5,200,-50.0,50.0);
+
+  TH2D *hADCsum_Xstrip_max_module = new TH2D("hADCsum_Xstrip_max_module", "ADC sum on max X strip, cluster in track",1000,0.0,1.5e4,nmodules,-0.5,nmodules-0.5);
+  TH2D *hADCsum_Ystrip_max_module = new TH2D("hADCsum_Ystrip_max_module", "ADC sum on max Y strip, cluster in track",1000,0.0,1.5e4,nmodules,-0.5,nmodules-0.5);
+
+  TH2D *hADCsampmax_Xstrip_module = new TH2D("hADCsampmax_Xstrip_module", "Max ADC sample on max X strip, cluster in track",1000,0.0,3000.0,nmodules,-0.5,nmodules-0.5);
+  TH2D *hADCsampmax_Ystrip_module = new TH2D("hADCsampmax_Ystrip_module", "Max ADC sample on max Y strip, cluster in track",1000,0.0,3000.0,nmodules,-0.5,nmodules-0.5);
+
+  TH2D *hADCprodXYstrip_max_module = new TH2D("hADCprodXYstrip_max_module", "#sqrt{ADCX*ADCY} sums for max x,y strips",1000,0.0,1.5e4,nmodules,-0.5,nmodules-0.5);
+  TH2D *hADCprodXYsamp_max_module = new TH2D("hADCprodXYsamp_max_module", "#sqrt{ADCX*ADCY} max samples, max xy strips",1000,0.0,3000.0,nmodules,-0.5,nmodules-0.5);
+  TH2D *hADCprodXYclust_module = new TH2D("hADCprodXYclust_module", "#sqrt{ADCX*ADCY} cluster sums",1000,0.0,5e4,nmodules,-0.5,nmodules-0.5);
+  TH2D *hADCsumXclust_module = new TH2D("hADCsumXclust_module","ADCX cluster sum",1000,0.0,5e4,nmodules,-0.5,nmodules-0.5);
+  TH2D *hADCsumYclust_module = new TH2D("hADCsumYclust_module","ADCY cluster sum",1000,0.0,5e4,nmodules,-0.5,nmodules-0.5);
+  TH2D *hStrip_maxcor_module = new TH2D("hStrip_maxcor_module","Correlation coefficient for cluster seed pixel",1000,-1.1,1.1,nmodules,-0.5,nmodules-0.5);
+  TH2D *hClust_corr_module = new TH2D("hClust_corr_module","Cluster corr. coeff.",1000,-1.1,1.1,nmodules,-0.5,nmodules-0.5);
+  
+  
   TH2D *hNclustX_vs_NclustY = new TH2D("hNclustX_vs_NclustY","Nclusters X vs Y", 101,-0.5,100.5,101,-0.5,100.5);
   // TH2D *hNhitX_vs_NhitY = new TH2D("hNhitX_vs_NhitY","N hits X vs Y",101,-0.5,100.5,101,-0.5,100.5);
   
@@ -2367,6 +2426,10 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
 
   TClonesArray *hxyhit_layer = new TClonesArray("TH2D",nlayers);
   //TClonesArray *hxytrack_layer = new TClonesArray("TH2D",nlayers);
+
+  TClonesArray *hdidhit_module = new TClonesArray("TH2D",nmodules);
+  TClonesArray *hshouldhit_module = new TClonesArray("TH2D",nmodules);
+  TClonesArray *hxyhit_module = new TClonesArray("TH2D",nmodules);
   
   long ntotal = C->GetEntries();
 
@@ -2374,31 +2437,65 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
   double nbins_eff = double( ntotal )/400.0;
 
   //3.75*n^2 = ntot
-  double nbinsy_eff = sqrt( nbins_eff/3.75 );
-  double nbinsx_eff = 3.75*nbinsy_eff;
+
   
+    
   for( int ilayer=0; ilayer<nlayers; ilayer++ ){
+
+    double Lx_layer = xgmax_layer[ilayer] - xgmin_layer[ilayer];
+    double Ly_layer = ygmax_layer[ilayer] - ygmin_layer[ilayer]; 
+
+    double nbinsy_eff,nbinsx_eff;
+
+
+    int nbinsaxis_hitmap = 250;
+    int nbinsx_hitmap,nbinsy_hitmap;
+   
+    //These formulas give:
+    // nbins_tot = nbinsx*nbinsy = sqrt(nbins_eff/ratio)*ratio*sqrt(nbins_eff/ratio) = nbins_eff
+  
+    if( Lx_layer > Ly_layer ){
+      double ratio = Lx_layer/Ly_layer;
+      nbinsy_eff = sqrt( nbins_eff/ratio );
+      nbinsx_eff = ratio*nbinsy_eff;
+
+      nbinsy_hitmap = nbinsaxis_hitmap;
+      nbinsx_hitmap = TMath::Nint(ratio*nbinsaxis_hitmap);
+    
+    } else {
+      double ratio = Ly_layer/Lx_layer;
+      nbinsx_eff = sqrt( nbins_eff/ratio );
+      nbinsy_eff = ratio*nbinsx_eff;
+
+      nbinsx_hitmap = nbinsaxis_hitmap;
+      nbinsy_hitmap = TMath::Nint(ratio*nbinsaxis_hitmap);
+    
+    }
+    
     TString hnametemp;
     
     new( (*hdidhit_layer)[ilayer] ) TH2D( hnametemp.Format("hdidhit_layer%d",ilayer), "Hit on track in layer", TMath::Nint(nbinsy_eff), ygmin_layer[ilayer]-10.0, ygmax_layer[ilayer]+10.0, TMath::Nint(nbinsx_eff), xgmin_layer[ilayer]-25.0,xgmax_layer[ilayer]+25.0 );
     new( (*hshouldhit_layer)[ilayer] ) TH2D( hnametemp.Format("hshouldhit_layer%d",ilayer), "Track passed through", TMath::Nint(nbinsy_eff), ygmin_layer[ilayer]-10.0, ygmax_layer[ilayer]+10.0, TMath::Nint(nbinsx_eff), xgmin_layer[ilayer]-25.0,xgmax_layer[ilayer]+25.0);
-
+    
     //add a few-mm "buffer zone" at the edges of this histogram:
     new( (*hxyhit_layer)[ilayer] ) TH2D( hnametemp.Format("hxyhit_layer%d",ilayer), "X vs. Y of hits on tracks",
-					 280, ygmin_layer[ilayer]-10.0, ygmax_layer[ilayer]+10.0,
-					 1050, xgmin_layer[ilayer]-25.0, xgmax_layer[ilayer]+25.0 );
-
-
+					 nbinsy_hitmap, ygmin_layer[ilayer]-10.0, ygmax_layer[ilayer]+10.0,
+					 nbinsx_hitmap, xgmin_layer[ilayer]-25.0, xgmax_layer[ilayer]+25.0 );
+    
+    
     new( (*hframe_layers)[ilayer] ) TH2D( hnametemp.Format("hframe_layer%d", ilayer), hnametemp.Format("Layer %d", ilayer),
 					  200, ygmin_layer[ilayer]-10.0, ygmax_layer[ilayer]+10.0,
 					  200, xgmin_layer[ilayer]-25.0, xgmax_layer[ilayer]+25.0 );
   }
+    
 
   TH1::SetDefaultSumw2();
   TH2::SetDefaultSumw2();
 
-
-  for( int imodule=0; imodule<nmodules; imodule++ ){
+  double nbins_eff_module = double(ntotal)/400.0*double(nlayers)/double(nmodules);
+  double nbinsx_eff_module,nbinsy_eff_module;
+  
+  for( int imodule=0; imodule<nmodules; imodule++ ){ //Add creation of module-specific efficiency histograms and hit maps:
     TRotation Rtemp;
     Rtemp.RotateX(mod_ax[imodule]);
     Rtemp.RotateY(mod_ay[imodule]);
@@ -2406,6 +2503,40 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
 
     mod_Rot[imodule] = Rtemp;
     mod_Rotinv[imodule] = Rtemp.Inverse();
+
+    int nbinsaxis_hitmap = 250;
+    int nbinsy_hitmap,nbinsx_hitmap;
+    
+    if( mod_Lx[imodule] > mod_Ly[imodule] ){
+      double ratio = mod_Lx[imodule]/mod_Ly[imodule];
+      nbinsy_eff_module = sqrt(nbins_eff_module/ratio);
+      nbinsx_eff_module = ratio*nbinsy_eff_module;
+
+      nbinsy_hitmap = nbinsaxis_hitmap;
+      nbinsx_hitmap = TMath::Nint(ratio*nbinsaxis_hitmap);
+    } else {
+      double ratio = mod_Ly[imodule]/mod_Lx[imodule];
+      nbinsx_eff_module = sqrt(nbins_eff_module/ratio);
+      nbinsy_eff_module = ratio * nbinsx_eff_module;
+
+      nbinsx_hitmap = nbinsaxis_hitmap;
+      nbinsy_hitmap = TMath::Nint(ratio*nbinsaxis_hitmap);
+    }
+
+    TString hnametemp;
+    new( (*hdidhit_module)[imodule] ) TH2D( hnametemp.Format("hdidhit_module%d",imodule),"Hit on track in module",
+					    TMath::Nint(nbinsy_eff_module), -mod_Ly[imodule]/2.0-10.0,mod_Ly[imodule]/2.0+10.0,
+					    TMath::Nint(nbinsx_eff_module), -mod_Lx[imodule]/2.0-10.0,mod_Lx[imodule]/2.0+10.0 );
+
+    new( (*hshouldhit_module)[imodule] ) TH2D( hnametemp.Format("hshouldhit_module%d",imodule), "Track passed through module",
+					       TMath::Nint(nbinsy_eff_module), -mod_Ly[imodule]/2.0-10.0,mod_Ly[imodule]/2.0+10.0,
+					       TMath::Nint(nbinsx_eff_module), -mod_Lx[imodule]/2.0-10.0,mod_Lx[imodule]/2.0+10.0 );
+
+
+    new( (*hxyhit_module)[imodule] ) TH2D( hnametemp.Format("hxyhit_module%d",imodule), "X vs Y of hits on tracks",
+					   nbinsy_hitmap, -mod_Ly[imodule]/2.0-10.0,mod_Ly[imodule]/2.0+10.0,
+					   nbinsx_hitmap, -mod_Lx[imodule]/2.0-10.0,mod_Lx[imodule]/2.0+10.0 );
+    
   }
   
   while( C->GetEntry(nevent++) && (NMAX < 0 || nevent < NMAX ) ){
@@ -2688,8 +2819,8 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
 	int module = *imod;
 	int layer = mod_layer[module];
 
-	hNstripsX_module->Fill( ModData[module].xstrips.size(),  module );
-	hNstripsY_module->Fill( ModData[module].ystrips.size(),  module );
+	// hNstripsX_module->Fill( ModData[module].xstrips.size(),  module );
+	// hNstripsY_module->Fill( ModData[module].ystrips.size(),  module );
 	
 	ModData[module].modindex = module;
 	ModData[module].layerindex = layer;
@@ -2722,7 +2853,7 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
 	  cout << "event " << evtID << ", module " << module << " too noisy, gave up" << endl;
 	}
 
-	hNclust_module->Fill(clusttemp.nclust2D, module );
+	//hNclust_module->Fill(clusttemp.nclust2D, module );
 	
 	//	cout << "ending cluster finding " << endl;
 	
@@ -2899,6 +3030,23 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
 	      double ytracktemp = TrackY + zavg_layer[ilay]*TrackYp;
 
 	      ( (TH2D*) (*hshouldhit_layer)[ilay] )->Fill( ytracktemp, xtracktemp );
+
+	      int nearest_module = get_nearest_module(tracktemp, ilay, itrack);
+
+	      if( nearest_module >= 0 && nearest_module < nmodules ){
+		( (TH2D*) (*hshouldhit_module)[nearest_module] )->Fill( ytracktemp - mod_y0[nearest_module],
+									xtracktemp - mod_x0[nearest_module] );
+
+		hNstripsX_module->Fill( ModData[nearest_module].xstrips.size(), nearest_module );
+		hNstripsY_module->Fill( ModData[nearest_module].ystrips.size(), nearest_module );
+
+		hNclust_module->Fill( mod_clusters[nearest_module].nclust2D, nearest_module );
+		
+	      }
+
+	      //Now HERE is where we should fill ADC type histograms:
+	      
+	      //To fill "should hit" histograms by module, we need to find the closest module in each layer
 	    }
 	  }
 
@@ -2924,7 +3072,7 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
 	    //Fill 2D cluster properties histograms IFF they are on tracks:
 
 	    //if we have at least 4 hits on the track, then we can compute "exclusive residuals":
-	    
+
 	    if( tracktemp.nhitsontrack[itrack] > 3 ){
 	      
 	      double sumxhits=0.0,sumyhits=0.0,sumzhits=0.0,sumxzhits=0.0,sumyzhits=0.0,sumz2hits=0.0;
@@ -2987,6 +3135,33 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
 	      hTrackYeresid_vs_module->Fill( module, vtracktemp - vhittemp );
 	      
 	    }
+
+	    hclustwidth_x_module->Fill( clusttemp.nstripx2D[iclust2D], module );
+	    hclustwidth_y_module->Fill( clusttemp.nstripy2D[iclust2D], module );
+
+	    hmaxtimebin_xstrip_module->Fill( ModData[module].isampmax_xstrips[clusttemp.ixstripmax[iclust2D]], module );
+	    hmaxtimebin_ystrip_module->Fill( ModData[module].isampmax_ystrips[clusttemp.iystripmax[iclust2D]], module );
+
+	    hADCasym_vs_module->Fill( module, clusttemp.dEclust2D[iclust2D]/(2.0*clusttemp.Eclust2D[iclust2D]) );
+	    hdT_vs_module->Fill( module, clusttemp.dtclust2D[iclust2D] );
+
+	    hADCsum_Xstrip_max_module->Fill( ModData[module].ADCsum_xstrips[clusttemp.ixstripmax[iclust2D]], module );
+	    hADCsum_Ystrip_max_module->Fill( ModData[module].ADCsum_ystrips[clusttemp.iystripmax[iclust2D]], module );
+
+	    hADCsampmax_Xstrip_module->Fill( ModData[module].ADCmax_xstrips[clusttemp.ixstripmax[iclust2D]], module );
+	    hADCsampmax_Ystrip_module->Fill( ModData[module].ADCmax_ystrips[clusttemp.iystripmax[iclust2D]], module );
+
+	    hADCsumXclust_module->Fill( clusttemp.totalchargex[iclust2D], module );
+	    hADCsumYclust_module->Fill( clusttemp.totalchargey[iclust2D], module );
+
+	    hADCprodXYstrip_max_module->Fill( sqrt(ModData[module].ADCsum_xstrips[clusttemp.ixstripmax[iclust2D]]*
+						   ModData[module].ADCsum_ystrips[clusttemp.iystripmax[iclust2D]] ), module );
+	    hADCprodXYsamp_max_module->Fill( sqrt(ModData[module].ADCmax_xstrips[clusttemp.ixstripmax[iclust2D]]*
+						  ModData[module].ADCmax_ystrips[clusttemp.iystripmax[iclust2D]] ), module );
+	    hADCprodXYclust_module->Fill( sqrt( clusttemp.totalchargex[iclust2D]*clusttemp.totalchargey[iclust2D] ), module );
+
+	    hStrip_maxcor_module->Fill( clusttemp.CorrCoeffMaxStrips[iclust2D], module );
+	    hClust_corr_module->Fill( clusttemp.CorrCoeff2D[iclust2D], module );
 	    
 	  
 	    hClust2D_ADCXvsY->Fill( clusttemp.totalchargex[clusttemp.ixclust2D[iclust2D]],
@@ -3096,8 +3271,8 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
 
 	      //Need to fill this with identical coordinates to how "should hit" is done to avoid bin migration effects:
 	      ( (TH2D*) (*hdidhit_layer)[layer] )->Fill( TrackY + zavg_layer[layer]*TrackYp,
-							TrackX + zavg_layer[layer]*TrackXp );
-
+							 TrackX + zavg_layer[layer]*TrackXp );
+	      
 	      ( (TH2D*) (*hxyhit_layer)[layer] )->Fill( HitYglobal[ihit], HitXglobal[ihit] );
 	      
 	      HitSigX[ihit] = clusttemp.xsigma[clusttemp.ixclust2D[iclust2D]];
@@ -3114,7 +3289,18 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
 
 	      hClust2D_Xmom_vs_NstripX->Fill( HitNstripX[ihit], HitXmom[ihit] );
 	      hClust2D_Ymom_vs_NstripY->Fill( HitNstripY[ihit], HitYmom[ihit] );
-					    
+
+	      ( (TH2D*) (*hxyhit_module)[module] )->Fill( HitYlocal[ihit], HitXlocal[ihit] );
+	      
+	      //To get a proper efficiency numerator, we need this check:
+
+	      //if( get_nearest_module( tracktemp, layer, itrack ) == module ){
+	      //this check shouldn't be needed any more, since get_nearest_module(track,layer) always defaults to the module with a hit
+	      // if the hit actually occurred.
+	      
+	      ( (TH2D*) (*hdidhit_module)[module] )->Fill( TrackY + zavg_layer[layer]*TrackYp - mod_y0[module],
+							   TrackX + zavg_layer[layer]*TrackXp - mod_x0[module] );
+	      //}
 	    }
 	  }
       
@@ -3499,6 +3685,22 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
   
   //  hframe_layers->Delete();
 
+  TClonesArray *heff_module = new TClonesArray("TH2D",nmodules);
+
+  for( int imod=0; imod<nmodules; imod++ ){
+    TString histname;
+
+    TH2D *htemp = ( (TH2D*) (*hdidhit_module)[imod] );
+    new( (*heff_module)[imod] ) TH2D( *htemp );
+    
+    ( (TH2D*) (*heff_module)[imod] )->SetName( histname.Format( "heff_module%d", imod ) );
+    ( (TH2D*) (*heff_module)[imod] )->SetTitle( histname.Format( "Track-based efficiency, module %d", imod ) );
+    
+    ( (TH2D*) (*heff_module)[imod] )->Divide( (TH2D*) (*hshouldhit_module)[imod] ); //
+    //Fix ROOT's 
+    
+  }
+  
   fout->Write();
   
   
