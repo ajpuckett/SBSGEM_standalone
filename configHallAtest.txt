@@ -50,33 +50,34 @@ mod_Ly 512.0 512.0 512.0 512.0 512.0
 # u strip angle relative to X axis: under u = X, v = Y convention, uangle = 0 and vangle=90
 mod_uangle 0.0 0.0 0.0 0.0 0.0 
 # Setting the "V" strip angle to -90 degrees amounts to reversing the direction of the Y axis (I hope):
-mod_vangle -90.0 -90.0 -90.0 -90.0 -90.0 
+mod_vangle -90.0 -90.0 -90.0 -90.0 -90.0
+mod_RYX           1.02485        1.0165      0.993901      0.990947      0.981436 
 eventdisplay 0
 clustersigma 0.4
 clustertau 54.0
 varyclustersigma 0
 varyclustertau 0
-maxstripsperclusterX 10
-maxstripsperclusterY 10
+maxstripsperclusterX 9
+maxstripsperclusterY 7
 # thresholds for "pruning" strips and clusters (not necessarily discarding):
 maxcor_threshold  -1.1
-stripcor_threshold -1.1
-clustcor_threshold -1.1
-clust2D_ADCasymcut 1.1
-clust2D_dTcut 1000.0
-threshold_maxsample 0.0
-threshold_stripsum 0.0
-threshold_clustersum 0.0
+stripcor_threshold  0.5
+clustcor_threshold 0.5
+clust2D_ADCasymcut 0.3
+clust2D_dTcut 25.0
+threshold_maxsample 50.0
+threshold_stripsum 250.0
+threshold_clustersum 700.0
 #threshold_maxsample 75.0
 #threshold_stripsum  300.0
 #threshold_clustersum 300.0
-trackchi2cut 1000.0
+trackchi2cut 300.0
 trackmaxradius 30.0 # mm, max radial separation between hit and projection of track from previous layers to add hit to track.
 trackmaxslopeX 1.0
 trackmaxslopeY 1.0
 #maxADCXYthreshold 1000.0
 tstripcut_nsigma 5.0
 #NMAX 100000000
-NMAX 2000000
+NMAX 1000000
 #clustmap_fname HallA_allevents_with_moments.root
 endconfig

@@ -698,6 +698,8 @@ void plot_GEMrun_summary(const char *filename, int nlayers=4, int nmodules=12, d
 
     c4->cd(8);
 
+    hefftemp->SetMinimum(0);
+    hefftemp->SetMaximum(1);
     hefftemp->Draw("colz");
 
     c4->cd(9);
