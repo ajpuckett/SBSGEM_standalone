@@ -57,14 +57,14 @@ clustersigma 0.4
 clustertau 54.0
 varyclustersigma 0
 varyclustertau 0
-maxstripsperclusterX 9
-maxstripsperclusterY 7
+maxstripsperclusterX 11
+maxstripsperclusterY 9
 # thresholds for "pruning" strips and clusters (not necessarily discarding):
-maxcor_threshold  -1.1
+maxcor_threshold  0.5
 stripcor_threshold  0.5
 clustcor_threshold 0.5
-clust2D_ADCasymcut 0.3
-clust2D_dTcut 25.0
+clust2D_ADCasymcut 0.3 
+clust2D_dTcut 30.0
 threshold_maxsample 50.0
 threshold_stripsum 250.0
 threshold_clustersum 700.0

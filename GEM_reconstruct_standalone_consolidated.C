@@ -63,6 +63,7 @@ const double PI = TMath::Pi();
 int maxnstripspercluster=7;
 int maxnstripXpercluster=9;
 int maxnstripYpercluster=7;
+
 //double clustersigma=0.4; //mm
 //double clustertau=50.0; //ns
 //double sigmasample=20.0; //individual sample noise width
@@ -83,6 +84,9 @@ double thresh_maxsample = 150.0; //max ADC sample on a strip must exceed this to
 double thresh_stripsum =  300.0; //threshold on the sum of all samples on a strip:
 double thresh_clustersum = 1000.0; //threshold on the summed ADCs of all strips in a cluster:
 
+double sigma_sample = 20.0; //Sigma of ADC sample noise; used to get threshold for overlapping cluster condition
+double thresh_2ndmax_nsigma = 5.0; //Number of sigmas above noise level to flag a second maximum in a contiguous grouping of strips. For this condition to occur, the 
+double thresh_2ndmax_fraction = 0.25; //threshold to flag 2nd maximum as a fraction of first maximum
 double sigma_hitpos=0.15; //mm
 double TrackMaxSlopeX = 1.0; //
 double TrackMaxSlopeY = 0.5;
@@ -189,7 +193,8 @@ struct moduledata_t { //for now, we will keep the "x" and "y" notation for these
 struct clusterdata_t { //1D and 2D clustering results by module:
 
   int modindex,layerindex;
-  
+
+  int nkeep2D; 
   int nclust2D;
   vector<int> itrack_clust2D;
   vector<int> ixclust2D;
@@ -313,6 +318,13 @@ map<int,TRotation> mod_Rot; //module rotation matrix: Compute ONCE!
 map<int,TRotation> mod_Rotinv; //inverse of module rotation matrix:
 //EXPERIMENTAL: Ratio of "y" gain to "x" gain: use to center ADC asymmetry at zero and improve correlation coefficient determination:
 map<int,double> mod_RYX; //Ratio of Y gain to X gain: should set to 1 by default
+map<int,double> mod_thresh_maxsample; //max sample threshold by module:
+map<int,double> mod_thresh_stripsum;  //sum of ADC samples on strip
+map<int,double> mod_thresh_clustersum; //cluster sum (technically sqrt(ADCX*ADCY) minimum value)
+map<int,double> mod_stripcorthreshold; //XY correlation coefficient of max X and Y strips
+map<int,double> mod_clustcorthreshold; //XY correlation coefficient of cluster-summed ADC samples
+map<int,double> mod_ADCasymcut; //ADC asymmetry cut for cluster X and Y sums
+map<int,double> mod_dTcut;      //tmeanx - tmeany cut for cluster summed ADC-weighted cluster mean times
 
 // Tracking layer combinatorics: populate these arrays once so we don't do it every event:
 //For each possible number of layers from 3 up to the total number of layers, we list all possible combinations of n layers
@@ -453,6 +465,438 @@ void filter_strips_by_module( moduledata_t &mod_data, double cor_threshold=0.0 )
   }
 }
 
+void prune_clusters( clusterdata_t &clusttemp ){
+  //Here we carry out a series of loops over all the clusters in this module. Within each loop, we check one (or perhaps more)
+  //criteria, including cluster sum, max. strip correlation, total cluster correlation, ADC asymmetry, time difference, number of strips, etc:
+  //within each loop, if at least one cluster passes the criterion, we reject all clusters that don't pass the criterion, guaranteeing that we will always keep at least one
+  //good cluster per module:
+  //The "keep" flag for each cluster is always initialized to true:
+  //order of criteria evaluation will have some effect on selection.
+  //At each stage of the pruning algorithm, 
+  
+  int ngood = 0;
+
+  //sqrt(ADCX*ADCY)>=threshold_clustersum
+  for( int pass=0; pass<2; pass++ ){
+    for( int iclust=0; iclust<clusttemp.nclust2D; iclust++ ){
+      double ADCXY = sqrt(clusttemp.totalchargex[clusttemp.ixclust2D[iclust]]*clusttemp.totalchargey[clusttemp.iyclust2D[iclust]] );
+      if( ADCXY >= thresh_clustersum && clusttemp.keepclust2D[iclust] && pass == 0 ){
+	ngood++;
+      }
+
+      if( pass == 1 && ngood > 0 && ADCXY < thresh_clustersum ){
+	clusttemp.keepclust2D[iclust] = false;
+      }
+    }
+  }
+
+  ngood = 0;
+
+  //Time correlation:
+  for( int pass=0; pass<2; pass++ ){
+    for( int iclust=0; iclust<clusttemp.nclust2D; iclust++ ){
+      if( clusttemp.keepclust2D[iclust] && fabs( clusttemp.dtclust2D[iclust] ) <= cluster2Dmatch_tcut && pass == 0 ){ //cluster passed all previous cuts and passes current cut; 
+	ngood++;
+	//keepclust2D[iclust] = true;
+      }
+
+      if( pass == 1 && ngood > 0 && fabs( clusttemp.dtclust2D[iclust] ) > cluster2Dmatch_tcut ){
+	clusttemp.keepclust2D[iclust] = false;
+      }
+    }
+  }
+
+  ngood = 0;
+  //ADC asymmetry:
+  for( int pass=0; pass<2; pass++ ){
+    for( int iclust=0; iclust<clusttemp.nclust2D; iclust++ ){
+      double ADCasym = clusttemp.dEclust2D[iclust]/(2.0*clusttemp.Eclust2D[iclust]);
+      if( clusttemp.keepclust2D[iclust] && fabs( ADCasym ) <= cluster2Dmatch_asymcut && pass == 0 ){
+	ngood++;
+	//clusttemp.keepclust2D[iclust] = true;
+      }
+      
+      if( pass == 1 && ngood > 0 && fabs( ADCasym ) > cluster2Dmatch_asymcut ){
+	clusttemp.keepclust2D[iclust] = false;
+      }
+    }
+  }
+
+  ngood = 0;
+  //Max. strip correlation coefficient:
+  for( int pass=0; pass<2; pass++ ){
+    for( int iclust=0; iclust<clusttemp.nclust2D; iclust++ ){
+      if( clusttemp.keepclust2D[iclust] && clusttemp.CorrCoeffMaxStrips[iclust] >= maxstripcorthreshold && pass == 0 ){
+	ngood++;
+      }
+
+      if( pass == 1 && ngood > 0 && clusttemp.CorrCoeffMaxStrips[iclust] < maxstripcorthreshold ){
+	clusttemp.keepclust2D[iclust] = false;
+      }
+    }
+  }
+  
+  ngood = 0;
+  //Cluster correlation coefficient:
+  for( int pass=0; pass<2; pass++ ){
+    for( int iclust=0; iclust<clusttemp.nclust2D; iclust++ ){
+      if( clusttemp.keepclust2D[iclust] && clusttemp.CorrCoeff2D[iclust] >= clustcorthreshold && pass == 0 ){
+	ngood++;
+      }
+
+      if( pass == 1 && ngood > 0 && clusttemp.CorrCoeff2D[iclust] < clustcorthreshold ){
+	clusttemp.keepclust2D[iclust] = false;
+      }
+    }
+  }
+
+  clusttemp.nkeep2D = ngood;
+}
+
+
+int find_clusters_by_module_new( moduledata_t mod_data, clusterdata_t &clust_data ){
+  int module = mod_data.modindex;
+  int layer = mod_data.layerindex;
+  int nclust=0;
+  double cormax=-1.1;
+  bool foundclust = true;
+
+  clust_data.modindex=module;
+  clust_data.layerindex=layer;
+  
+  map<int,bool> pixelused;
+  map<int,double> pixelcorrcoeff;
+  map<int,double> pixelADCXY; //sqrt(ADCX*ADCY)
+  map<int,double> pixelADCX;
+  map<int,double> pixelADCY;
+  
+  set<int> localmaxpixels; //ALL local maxima of sqrt(ADCY * ADCY)
+  map<int,bool> is2x2; //Flag if local max is part of a cluster of at least 2x2 strips:
+  map<int,bool> overlap; //Flag if cluster is part of a contiguous 2D grouping of strips overlapping with another local maximum
+  map<int,set<int> > overlaplist; //List of all other local maxima with which this one overlaps; FIT to separate?
+  
+  bool any2x2 = false;
+  //First loop: initialize pixelused flag to false AND calculate correlation coefficients of all pixels (should we do this?)
+  for( set<int>::iterator ix=mod_data.xstrips.begin(); ix!=mod_data.xstrips.end(); ++ix ){
+    int ixstrip = *ix;
+    for( set<int>::iterator iy=mod_data.ystrips.begin(); iy!=mod_data.ystrips.end(); ++iy ){
+      int iystrip = *iy;
+      
+      int pixel = ixstrip + mod_nstripsu[module]*iystrip;
+
+      //  islocalmax[pixel] = false;
+      //is2x2
+      
+      double sumx=0.0, sumy=0.0, sumx2=0.0, sumy2=0.0, sumxy=0.0;
+	
+      for( int isamp=0; isamp<nADCsamples; isamp++ ){
+	double ADCx = mod_data.ADCsamp_xstrips[ixstrip][isamp];
+	double ADCy = mod_data.ADCsamp_ystrips[iystrip][isamp];
+	
+	sumx += ADCx;
+	sumy += ADCy;
+	sumx2 += pow(ADCx,2);
+	sumy2 += pow(ADCy,2);
+	sumxy += ADCx*ADCy;
+      }
+
+      double nSAMP = double(nADCsamples);
+      
+      double mux = sumx/nSAMP;
+      double muy = sumy/nSAMP;
+      double varx = sumx2/nSAMP-pow(mux,2);
+      double vary = sumy2/nSAMP-pow(muy,2);
+      double sigx = sqrt(varx);
+      double sigy = sqrt(vary);
+      
+      double ccor = ( sumxy - nSAMP*mux*muy )/( nSAMP*sigx*sigy );
+ 
+      pixelused[pixel] = false;
+      pixelcorrcoeff[pixel] = ccor;
+      //Not clear if we actually want to calculate these other quantities yet:
+      pixelADCXY[pixel] = sqrt(sumx*sumy);
+      pixelADCX[pixel] = sumx;
+      pixelADCY[pixel] = sumy;
+    }
+  }
+
+  //Second loop: finding local maxima:
+  for( set<int>::iterator ix=mod_data.xstrips.begin(); ix!=mod_data.xstrips.end(); ++ix ){
+    int ixstrip = *ix;
+    for( set<int>::iterator iy=mod_data.ystrips.begin(); iy!=mod_data.ystrips.end(); ++iy ){
+      int iystrip = *iy;
+
+      int pixel = ixstrip + mod_nstripsu[module]*iystrip;
+
+      int ixlo=ixstrip, ixhi=ixstrip;
+      int iylo=iystrip, iyhi=iystrip;
+
+      double ADC = sqrt(mod_data.ADCsum_xstrips[ixstrip]*mod_data.ADCsum_ystrips[iystrip]);
+      
+      if( mod_data.xstrips.find(ixstrip+1) != mod_data.xstrips.end() ){
+	ixhi = ixstrip+1;
+      }
+      if( mod_data.xstrips.find(ixstrip-1) != mod_data.xstrips.end() ){
+	ixlo = ixstrip-1;
+      }
+
+      if( mod_data.ystrips.find(iystrip+1) != mod_data.ystrips.end() ){
+	iyhi = iystrip+1;
+      }
+
+      if( mod_data.ystrips.find(iystrip-1) != mod_data.ystrips.end() ){
+	iylo = iystrip-1;
+      }
+
+      bool islocalmax = true;
+      // bool is2x2 = false;
+
+      //Check all nearest-neighbor strips:
+      for( int ixtest=ixlo; ixtest<=ixhi; ixtest++ ){
+	for( int iytest=iylo; iytest<=iyhi; iytest++ ){
+	  double ADCtemp = sqrt(mod_data.ADCsum_xstrips[ixtest]*mod_data.ADCsum_ystrips[iytest]);
+	  if( ADCtemp > ADC && !(ixtest == ixstrip && iytest == iystrip ) ) islocalmax = false;
+	}
+      }
+      
+      if( islocalmax && pixelcorrcoeff[pixel] >= stripcorthreshold ){ //This pixel is a local maximum of sqrt(ADCX*ADCY) with a correlation coefficient above the threshold--evaluate as possible seed for clustering:
+
+	localmaxpixels.insert(pixel);
+	is2x2[pixel] = false;
+	if( ixhi-ixlo+1 >= 2 && iyhi - iylo+1 >= 2 ){
+	  is2x2[pixel] = true;
+	  any2x2 = true;
+	  //initialize "overlap" to false:
+	  overlap[pixel] = false;
+	}
+	
+	
+      }
+      
+    }
+  }
+
+  //Third loop: build candidate clusters around local maxima:
+  for( set<int>::iterator ipixel=localmaxpixels.begin(); ipixel!=localmaxpixels.end(); ++ipixel ){
+
+    int pixel = *ipixel;
+    if( is2x2[pixel] || !any2x2 ){ //consider ONLY multi-strip clusters if there are ANY multistrip clusters:
+      
+      int ixpixel = pixel % (mod_nstripsu[module]);
+      int iypixel = pixel / mod_nstripsu[module];
+      set<int> xstriplist,ystriplist; //temporary lists of X and Y strips
+
+      xstriplist.insert(ixpixel);
+      ystriplist.insert(iypixel);
+
+      int ixlo=ixpixel,ixhi=ixpixel,iylo=iypixel,iyhi=iypixel;
+
+      while( mod_data.xstrips.find(ixlo-1) != mod_data.xstrips.end() ){
+	xstriplist.insert(ixlo-1);
+	ixlo--;
+      }
+      while( mod_data.xstrips.find(ixhi+1) != mod_data.xstrips.end() ){
+	xstriplist.insert(ixhi+1);
+	ixhi++;
+      }
+      while( mod_data.ystrips.find(iylo-1) != mod_data.ystrips.end() ){
+	ystriplist.insert(iylo-1);
+	iylo--;
+      }
+      while( mod_data.ystrips.find(iyhi+1) != mod_data.ystrips.end() ){
+	ystriplist.insert(iyhi+1);
+	iyhi++;
+      }
+
+      double ADCsumy=0.0;
+      double ADCsumx=0.0, xsum=0.0, ysum=0.0, xsum2=0.0, ysum2=0.0, txsum=0.0, txsum2=0.0,tysum=0.0,tysum2=0.0;      
+
+      // double sumxsamp[nADCsamples],sumysamp[nADCsamples];
+
+      //arrays to hold cluster-summed ADC samples:
+      vector<double> xADCsamples(nADCsamples, 0.0);
+      vector<double> yADCsamples(nADCsamples, 0.0);
+      
+      // for( int isamp=0; isamp<nADCsamples; isamp++ ){
+      // 	sumxsamp[isamp] = 0.0;
+      // 	sumysamp[isamp] = 0.0;
+      // }
+
+      double maxADCX=0.0;
+      double xstripmax = -1.e9;
+      int ixmax=-1;
+      //Now compute candidate cluster properties: worry about how to deal with overlap later:
+      for( int ix=ixlo; ix<=ixhi; ix++ ){
+	double ADCtemp = mod_data.ADCsum_xstrips[ix];
+	double xlocal = (ix + 0.5 - 0.5*mod_nstripsu[module])*mod_ustrip_pitch[module];
+	//uncorrected strip time:
+	double tstrip = mod_data.Tmean_xstrips[ix];
+
+	if( ixmax < 0 || ADCtemp > maxADCX ){
+	  maxADCX = ADCtemp;
+	  ixmax = ix;
+	  xstripmax = xlocal;
+	}
+	xsum += ADCtemp * xlocal;
+	xsum2 += ADCtemp * pow(xlocal,2);
+	txsum += ADCtemp * tstrip;
+	txsum2 += ADCtemp * pow(tstrip,2);
+
+	for( int isamp=0; isamp<nADCsamples; isamp++ ){
+	  xADCsamples[isamp] += mod_data.ADCsamp_xstrips[ix][isamp];
+	}
+
+	ADCsumx += ADCtemp;
+	
+      }
+
+      double maxADCY = 0.0;
+      double ystripmax = -1.e9;
+      int iymax=-1;
+      for( int iy=iylo; iy<=iyhi; iy++ ){
+	double ADCtemp = mod_data.ADCsum_ystrips[iy];
+	double ylocal = (iy+0.5 - 0.5*mod_nstripsv[module])*mod_vstrip_pitch[module];
+	double tstrip = mod_data.Tmean_ystrips[iy];
+
+	if( iymax < 0 || ADCtemp > maxADCY ){
+	  maxADCY = ADCtemp;
+	  iymax = iy;
+	  ystripmax = ylocal;
+	}
+
+	ysum += ADCtemp * ylocal;
+	ysum2 += ADCtemp * pow(ylocal,2);
+	tysum += ADCtemp * tstrip;
+	tysum2 += ADCtemp * pow(tstrip,2);
+
+	for( int isamp=0; isamp<nADCsamples; isamp++ ){
+	  yADCsamples[isamp] += mod_data.ADCsamp_ystrips[iy][isamp];
+	}
+
+	ADCsumy += ADCtemp;
+      }
+      
+      double csumxsamp =0.0, csumysamp=0.0, csumx2samp=0.0, csumy2samp=0.0, csumxysamp=0.0;
+      for( int isamp=0; isamp<nADCsamples; isamp++ ){
+	csumxsamp += xADCsamples[isamp];
+	csumysamp += yADCsamples[isamp];
+	csumx2samp += pow(xADCsamples[isamp],2);
+	csumy2samp += pow(yADCsamples[isamp],2);
+	csumxysamp += xADCsamples[isamp]*yADCsamples[isamp];
+	// xADCsamples.push_back( sumxsamp[isamp] );
+	// yADCsamples.push_back( sumysamp[isamp] );
+      }
+
+      double nSAMP = double(nADCsamples);
+      
+      double mux = csumxsamp/nSAMP;
+      double muy = csumysamp/nSAMP;
+      double varx = csumx2samp/nSAMP-pow(mux,2);
+      double vary = csumy2samp/nSAMP-pow(muy,2);
+      double sigx = sqrt(varx);
+      double sigy = sqrt(vary);
+
+      double ccor = (csumxysamp - nSAMP*mux*muy)/(nSAMP*sigx*sigy);
+
+      int nstripx = ixhi - ixlo + 1;
+      int nstripy = iyhi - iylo + 1;
+      
+      // if( sqrt(ADCsumx*ADCsumy) >= thresh_clustersum && ccor >= clustcorthreshold &&
+      // 	  nstripx <= maxnstripXpercluster && nstripy <= maxnstripYpercluster ){
+      if( nstripx <= maxnstripXpercluster && nstripy <= maxnstripYpercluster ){
+	double txmean = txsum/ADCsumx;
+	double tymean = tysum/ADCsumy;
+	double txsigma = txsum2/ADCsumx - pow(txmean,2);
+	double tysigma = tysum2/ADCsumy - pow(tymean,2);
+
+	double xmean = xsum/ADCsumx;
+	double ymean = ysum/ADCsumy;
+	double xsigma = xsum2/ADCsumx - pow(xmean,2);
+	double ysigma = ysum2/ADCsumy - pow(ymean,2);
+
+	//1D cluster info:
+	clust_data.nstripx.push_back( nstripx );
+	clust_data.ixstriplo.push_back( ixlo );
+	clust_data.ixstriphi.push_back( ixhi );
+	clust_data.ixstripmax.push_back( ixmax );
+	clust_data.nstripy.push_back( nstripy );
+	clust_data.iystriplo.push_back( iylo );
+	clust_data.iystriphi.push_back( iyhi );
+	clust_data.iystripmax.push_back( iymax );
+	clust_data.xmean.push_back( xmean );
+	clust_data.ymean.push_back( ymean );
+	clust_data.xsigma.push_back( xsigma );
+	clust_data.ysigma.push_back( ysigma );
+	clust_data.txmean.push_back( txmean );
+	clust_data.tymean.push_back( tymean );
+	clust_data.txsigma.push_back( txsigma );
+	clust_data.tysigma.push_back( tysigma );
+	clust_data.totalchargex.push_back( ADCsumx );
+	clust_data.totalchargey.push_back( ADCsumy );
+	
+	//"2D" cluster info: 
+	clust_data.itrack_clust2D.push_back( -1 );
+	clust_data.ixclust2D.push_back( nclust );
+	clust_data.iyclust2D.push_back( nclust );
+	clust_data.nstripx2D.push_back( nstripx );
+	clust_data.nstripy2D.push_back( nstripy );
+	clust_data.xclust2D.push_back( xmean );
+	clust_data.yclust2D.push_back( ymean );
+	clust_data.Eclust2D.push_back( 0.5*(ADCsumx+ADCsumy) );
+	clust_data.dEclust2D.push_back( ADCsumx - ADCsumy );
+	clust_data.tclust2D.push_back( 0.5*(txmean+tymean) );
+	clust_data.tclust2Dwalkcorr.push_back( 0.5*(txmean+tymean) );
+	clust_data.dtclust2D.push_back( txmean-tymean );
+	clust_data.dtclust2Dwalkcorr.push_back( txmean-tymean );
+	clust_data.CorrCoeff2D.push_back( ccor );
+	clust_data.CorrCoeffMaxStrips.push_back( pixelcorrcoeff[pixel] );
+	clust_data.keepclust2D.push_back( true );
+	clust_data.ADCsamp_xclust.push_back( xADCsamples );
+	clust_data.ADCsamp_yclust.push_back( yADCsamples );
+	clust_data.xmom2D.push_back( (xmean-xstripmax)/mod_ustrip_pitch[module] );
+	clust_data.ymom2D.push_back( (ymean-ystripmax)/mod_vstrip_pitch[module] );
+	clust_data.xclust2Dcorr.push_back( xmean );
+	clust_data.yclust2Dcorr.push_back( ymean );
+
+	double Utemp = xmean;
+	double Vtemp = ymean;
+
+	double det = mod_Pxu[module]*mod_Pyv[module] - mod_Pyu[module]*mod_Pxv[module]; //cos( alphau) * sin(alphav) - sin(alphau)*cos(alphav) = 1 for alphau = 0, alphav = 90
+	double Xtemp = (mod_Pyv[module]*Utemp - mod_Pyu[module]*Vtemp)/det; //(sin(alphav)*U - sin(alphau)*V)/det = U = X for alphau = 0, alphav = 90
+	double Ytemp = (mod_Pxu[module]*Vtemp - mod_Pxv[module]*Utemp)/det; //(cos(alphau)*V - cos(alphav)*U)/det = V = Y for alphau = 0, alphav = 90
+	
+	//      cout << "(module, U, V, X, Y)=(" << module << ", " << Utemp << ", " << Vtemp << ", " << Xtemp << ", " << Ytemp << ")"
+	//   << endl;
+	
+	//compute global hit coordinates ONCE:
+	//TVector3 hitpos_local( clust_data.xmean[nclust], clust_data.ymean[nclust], 0.0 );
+	TVector3 hitpos_local( Xtemp, Ytemp, 0.0 );
+	
+	
+	TVector3 modcenter_global(mod_x0[module], mod_y0[module], mod_z0[module] );
+	TVector3 hitpos_global = mod_Rot[module] * hitpos_local + modcenter_global;
+	
+	clust_data.xglobal2D.push_back( hitpos_global.X() );
+	clust_data.yglobal2D.push_back( hitpos_global.Y() );
+	clust_data.zglobal2D.push_back( hitpos_global.Z() );
+
+	nclust++;
+
+      }
+      
+    }
+
+  }
+
+  clust_data.nclustx = nclust;
+  clust_data.nclusty = nclust;
+  clust_data.nclust2D = nclust;
+  
+  if( nclust > 0 ){
+    prune_clusters( clust_data );
+  }
+  return 0;
+}
 
 int find_clusters_by_module( moduledata_t mod_data, clusterdata_t &clust_data ){
   //Don't do 1D clustering any more; instead, now that we have filtered strips by XY matching correlation coefficient, the plan is to
@@ -1084,91 +1528,6 @@ int find_clusters_by_module( moduledata_t mod_data, clusterdata_t &clust_data ){
 }
 
 
-void prune_clusters( clusterdata_t &clusttemp ){
-  //Here we carry out a series of loops over all the clusters in this module. Within each loop, we check one (or perhaps more)
-  //criteria, including cluster sum, max. strip correlation, total cluster correlation, ADC asymmetry, time difference, number of strips, etc:
-  //within each loop, if at least one cluster passes the criterion, we reject all clusters that don't pass the criterion, guaranteeing that we will always keep at least one
-  //good cluster per module:
-  //The "keep" flag for each cluster is always initialized to true:
-  //order of criteria evaluation will have some effect on selection.
-  //At each stage of the pruning algorithm, 
-  
-  int ngood = 0;
-
-  //sqrt(ADCX*ADCY)>=threshold_clustersum
-  for( int pass=0; pass<2; pass++ ){
-    for( int iclust=0; iclust<clusttemp.nclust2D; iclust++ ){
-      double ADCXY = sqrt(clusttemp.totalchargex[clusttemp.ixclust2D[iclust]]*clusttemp.totalchargey[clusttemp.iyclust2D[iclust]] );
-      if( ADCXY >= thresh_clustersum && clusttemp.keepclust2D[iclust] && pass == 0 ){
-	ngood++;
-      }
-
-      if( pass == 1 && ngood > 0 && ADCXY < thresh_clustersum ){
-	clusttemp.keepclust2D[iclust] = false;
-      }
-    }
-  }
-
-  ngood = 0;
-
-  //Time correlation:
-  for( int pass=0; pass<2; pass++ ){
-    for( int iclust=0; iclust<clusttemp.nclust2D; iclust++ ){
-      if( clusttemp.keepclust2D[iclust] && fabs( clusttemp.dtclust2D[iclust] ) <= cluster2Dmatch_tcut && pass == 0 ){ //cluster passed all previous cuts and passes current cut; 
-	ngood++;
-	//keepclust2D[iclust] = true;
-      }
-
-      if( pass == 1 && ngood > 0 && fabs( clusttemp.dtclust2D[iclust] ) > cluster2Dmatch_tcut ){
-	clusttemp.keepclust2D[iclust] = false;
-      }
-    }
-  }
-
-  ngood = 0;
-  //ADC asymmetry:
-  for( int pass=0; pass<2; pass++ ){
-    for( int iclust=0; iclust<clusttemp.nclust2D; iclust++ ){
-      double ADCasym = clusttemp.dEclust2D[iclust]/(2.0*clusttemp.Eclust2D[iclust]);
-      if( clusttemp.keepclust2D[iclust] && fabs( ADCasym ) <= cluster2Dmatch_asymcut && pass == 0 ){
-	ngood++;
-	//clusttemp.keepclust2D[iclust] = true;
-      }
-      
-      if( pass == 1 && ngood > 0 && fabs( ADCasym ) > cluster2Dmatch_asymcut ){
-	clusttemp.keepclust2D[iclust] = false;
-      }
-    }
-  }
-
-  ngood = 0;
-  //Max. strip correlation coefficient:
-  for( int pass=0; pass<2; pass++ ){
-    for( int iclust=0; iclust<clusttemp.nclust2D; iclust++ ){
-      if( clusttemp.keepclust2D[iclust] && clusttemp.CorrCoeffMaxStrips[iclust] >= maxstripcorthreshold && pass == 0 ){
-	ngood++;
-      }
-
-      if( pass == 1 && ngood > 0 && clusttemp.CorrCoeffMaxStrips[iclust] < maxstripcorthreshold ){
-	clusttemp.keepclust2D[iclust] = false;
-      }
-    }
-  }
-  
-  ngood = 0;
-  //Cluster correlation coefficient:
-  for( int pass=0; pass<2; pass++ ){
-    for( int iclust=0; iclust<clusttemp.nclust2D; iclust++ ){
-      if( clusttemp.keepclust2D[iclust] && clusttemp.CorrCoeff2D[iclust] >= clustcorthreshold && pass == 0 ){
-	ngood++;
-      }
-
-      if( pass == 1 && ngood > 0 && clusttemp.CorrCoeff2D[iclust] < clustcorthreshold ){
-	clusttemp.keepclust2D[iclust] = false;
-      }
-    }
-  }
-}
 
 void find_tracks( map<int,clusterdata_t> mod_clusters, trackdata_t &trackdata ){
   //only attempt tracking if we have at least three layers with at least one 2D matched hit passing the XY and T correlation cuts:
@@ -1187,7 +1546,7 @@ void find_tracks( map<int,clusterdata_t> mod_clusters, trackdata_t &trackdata ){
     //clusterdata_t clusttemp = mod_clusters[module];
     int layer = mod_layer[module];
 
-    prune_clusters( mod_clusters[module] );
+    //prune_clusters( mod_clusters[module] ); this was moved to find_clusters
     
     if( mod_clusters[module].nclust2D > 0 ){
       for( int iclust=0; iclust<mod_clusters[module].nclust2D; iclust++ ){
@@ -2682,9 +3041,9 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
   }
   
   while( C->GetEntry(nevent++) && (NMAX < 0 || nevent < NMAX ) ){
-    //if( nevent % 1000 == 0 ) cout << nevent << endl;
+    if( nevent % 1000 == 0 ) cout << nevent << endl;
 
-    cout << "Processing event " << nevent << endl;
+    //cout << "Processing event " << nevent << endl;
     
     //Clustering and hit reconstruction:
 
@@ -3070,9 +3429,9 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
 	}
 	
 
-	cout << "starting cluster finding, event " << evtID << ", module " << module << ". (nstrip X, nstrip Y) = (" << ModData[module].xstrips.size()
-	     << ", " << ModData[module].ystrips.size() << ")" << endl;
-	int clusterflag = find_clusters_by_module( ModData[module], clusttemp );
+	//cout << "starting cluster finding, event " << evtID << ", module " << module << ". (nstrip X, nstrip Y) = (" << ModData[module].xstrips.size()
+	//    << ", " << ModData[module].ystrips.size() << ")" << endl;
+	int clusterflag = find_clusters_by_module_new( ModData[module], clusttemp );
 
 	
 	
@@ -3082,7 +3441,7 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
 
 	//hNclust_module->Fill(clusttemp.nclust2D, module );
 	
-	cout << "ending cluster finding " << endl;
+	//	cout << "ending cluster finding, ncluster =  " << clusttemp.nclust2D << endl;
 	
 	mod_clusters[module] = clusttemp;
 
@@ -3191,11 +3550,11 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
 
       if( nlayers_with_2Dclust >= 3 ){
 
-	cout << "Finding tracks, event... " << evtID << endl;
+	//	cout << "Finding tracks, event... " << evtID << endl;
 	
 	find_tracks( mod_clusters, tracktemp );
 	
-	cout << "track finding successful..." << endl;
+	//cout << "track finding successful..." << endl;
 	
 	hNtracks_found->Fill( tracktemp.ntracks );
 	
