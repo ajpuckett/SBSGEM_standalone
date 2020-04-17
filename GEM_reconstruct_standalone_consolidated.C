@@ -64,6 +64,9 @@ int maxnstripspercluster=7;
 int maxnstripXpercluster=9;
 int maxnstripYpercluster=7;
 
+int maxneighborsX=4; //+/-4 around local maximum:
+int maxneighborsY=3; //+/-3 around local maximum:
+
 //double clustersigma=0.4; //mm
 //double clustertau=50.0; //ns
 //double sigmasample=20.0; //individual sample noise width
@@ -676,11 +679,75 @@ int find_clusters_by_module_new( moduledata_t mod_data, clusterdata_t &clust_dat
     }
   }
 
-  //Third loop: build candidate clusters around local maxima:
+  //Third loop: create a map to flag overlapping clusters in X and/or Y: ask how many other local maxima does this cluster
+  //share with a nearby local maximum: We have to avoid flagging fake hits as overlapping clusters. So what SHOULD we do?
+  //If we have another cluster separated by two or more strips but less than 2*maxneighbors, then we check whether the two clusters
+  // are contiguous; and if so, we "split" any shared strips in between two local maxima in proportion to the ratio of the two 
+  // maxima and/or the distance from either maximum:
+  // map<int,set<int> > overlapx; 
+  // map<int,set<int> > overlapy; 
+
+  // for( set<int>::iterator ipixel=localmaxpixels.begin(); ipixel!=localmaxpixels.end(); ++ipixel ){
+  //   int ip=*ipixel;
+  //   int ixp = ip % (mod_nstripsu[module]);
+  //   int iyp = ip / (mod_nstripsu[module]);
+  //   for( set<int>::iterator jpixel=localmaxpixels.begin(); jpixel!=localmaxpixels.end(); ++jpixel ){
+  //     int jp = *jpixel;
+
+  //     if( jp != ip ){
+
+  // 	int jxp = jp % (mod_nstripsu[module]);
+  // 	int jyp = jp / (mod_nstripsu[module]);
+	
+  // 	if( abs(jxp - ixp) > 1 && abs(jxp - ixp) < 2*maxneighborsX ){ // do these clusters overlap or potentially overlap in X?
+  // 	  int ixlo=ixp, ixhi=jxp;
+  // 	  if( ixlo > ixhi ){
+  // 	    ixlo = jxp;
+  // 	    ixhi = ixp; 
+  // 	  }
+  // 	  //Are these clusters contiguous? 
+	  
+  // 	  bool overlap = true;
+  // 	  for( int ixtemp=ixlo+1; ixtemp<ixhi; ixtemp++ ){
+  // 	    if( mod_data.xstrips.find(ixtemp) == mod_data.xstrips.end() ) overlap = false;
+  // 	  }
+	  
+  // 	  if( overlap ){ //flag two clusters as overlapping in X
+  // 	    overlapx[jp].insert(ip);
+  // 	    overlapx[ip].insert(jp);
+  // 	  }
+  // 	}
+	
+  // 	if( abs(jyp-iyp) > 1 && abs(jyp-iyp) < 2*maxneighborsY ){ //do these clusters overlap or potentially overlap in Y?
+  // 	  int iylo = iyp, iyhi=jyp;
+  // 	  if( iylo > iyhi ){
+  // 	    iylo = jyp;
+  // 	    iyhi = iyp;
+  // 	  }
+
+  // 	  //is this pair of clusters contiguous in Y?
+  // 	  bool overlap = true;
+  // 	  for( int iytemp=iylo+1; iytemp<iyhi; iytemp++ ){
+  // 	    if( mod_data.ystrips.find(iytemp) == mod_data.ystrips.end() ) overlap = false;
+  // 	  }
+
+  // 	  if( overlap ){ //flag two clusters as overlapping in Y
+  // 	    overlapy[jp].insert(ip);
+  // 	    overlapy[ip].insert(jp);
+  // 	  }
+  // 	}
+	  
+  //     }      
+  //   }
+  // }
+  
+  //Fourth loop: build candidate clusters around local maxima:
   for( set<int>::iterator ipixel=localmaxpixels.begin(); ipixel!=localmaxpixels.end(); ++ipixel ){
 
     int pixel = *ipixel;
     if( is2x2[pixel] || !any2x2 ){ //consider ONLY multi-strip clusters if there are ANY multistrip clusters:
+
+      bool overlap = false;
       
       int ixpixel = pixel % (mod_nstripsu[module]);
       int iypixel = pixel / mod_nstripsu[module];
@@ -689,24 +756,35 @@ int find_clusters_by_module_new( moduledata_t mod_data, clusterdata_t &clust_dat
       xstriplist.insert(ixpixel);
       ystriplist.insert(iypixel);
 
+      //int ixtemp = ixpixel, iytemp=iypixel;
       int ixlo=ixpixel,ixhi=ixpixel,iylo=iypixel,iyhi=iypixel;
 
-      while( mod_data.xstrips.find(ixlo-1) != mod_data.xstrips.end() ){
-	xstriplist.insert(ixlo-1);
+      while( mod_data.xstrips.find( ixlo-1 ) != mod_data.xstrips.end() && ixpixel-(ixlo-1) <=maxneighborsX
+	     && xstriplist.size() < maxnstripXpercluster ){
+	xstriplist.insert( ixlo-1 );
 	ixlo--;
       }
-      while( mod_data.xstrips.find(ixhi+1) != mod_data.xstrips.end() ){
-	xstriplist.insert(ixhi+1);
+
+      while( mod_data.xstrips.find( ixhi+1 ) != mod_data.xstrips.end() && ixhi+1 - ixpixel <= maxneighborsX
+	     && xstriplist.size() < maxnstripXpercluster ){
+	xstriplist.insert( ixhi+1 );
 	ixhi++;
       }
-      while( mod_data.ystrips.find(iylo-1) != mod_data.ystrips.end() ){
-	ystriplist.insert(iylo-1);
+
+      while( mod_data.ystrips.find( iylo-1 ) != mod_data.ystrips.end() && iypixel-(iylo-1) <= maxneighborsY
+	     && ystriplist.size() < maxnstripYpercluster ){
+	ystriplist.insert( iylo-1 );
 	iylo--;
       }
-      while( mod_data.ystrips.find(iyhi+1) != mod_data.ystrips.end() ){
-	ystriplist.insert(iyhi+1);
+
+      while( mod_data.ystrips.find( iyhi+1 ) != mod_data.ystrips.end() && iyhi+1 - iypixel <= maxneighborsY
+	     && ystriplist.size() < maxnstripYpercluster ){
+	ystriplist.insert( iyhi+1 );
 	iyhi++;
       }
+
+      //TODO: split overlapping clusters:
+      //LATER
 
       double ADCsumy=0.0;
       double ADCsumx=0.0, xsum=0.0, ysum=0.0, xsum2=0.0, ysum2=0.0, txsum=0.0, txsum2=0.0,tysum=0.0,tysum2=0.0;      
