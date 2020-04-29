@@ -72,7 +72,7 @@ threshold_clustersum 600.0
 #threshold_stripsum  300.0
 #threshold_clustersum 300.0
 trackchi2cut 300.0
-trackmaxradius 30.0 # mm, max radial separation between hit and projection of track from previous layers to add hit to track.
+trackmaxradius 10.0 # mm, max radial separation between hit and projection of track from previous layers to add hit to track.
 trackmaxslopeX 1.0
 trackmaxslopeY 1.0
 #maxADCXYthreshold 1000.0

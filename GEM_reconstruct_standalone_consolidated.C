@@ -1779,6 +1779,8 @@ void find_tracks( map<int,clusterdata_t> mod_clusters, trackdata_t &trackdata ){
 	  int nhitbestcombo = 0;
 	  
 	  int ngoodcombos=0; //number of plausible track candidates found:
+
+	  //onbesttrack.clear();
 	  
 	  for( int icombo=0; icombo<layercombos[nhitsrequired].size(); icombo++ ){ //loop over all possible combinations of nhitsrequired LAYERS with available hits:
 
@@ -1809,6 +1811,12 @@ void find_tracks( map<int,clusterdata_t> mod_clusters, trackdata_t &trackdata ){
 	      double xtrtemp,ytrtemp,ztrtemp,xptrtemp,yptrtemp; //temporary storage for track parameters: 
 
 	      double varx,vary,varxp,varyp,covxxp,covyyp;
+
+	      //clear certain arrays so they don't screw up chi^2 calculation:
+	      ontrack.clear();
+	      hitcombo.clear();
+	      xresid_layer.clear();
+	      yresid_layer.clear();
 	      
 	      //start at first layer:
 	      //get first possible combination:
@@ -1957,7 +1965,8 @@ void find_tracks( map<int,clusterdata_t> mod_clusters, trackdata_t &trackdata ){
 		
 		int ndf = 2*nhits-4;
 		
-		for(set<int>::iterator ilayer=layerswithfreehits.begin(); ilayer!=layerswithfreehits.end(); ++ilayer){
+		//		for(set<int>::iterator ilayer=layerswithfreehits.begin(); ilayer!=layerswithfreehits.end(); ++ilayer){
+		for( set<int>::iterator ilayer = layerstotest.begin(); ilayer != layerstotest.end(); ++ilayer ){
 		  int layer = *ilayer;
 		  
 		  if( ontrack[layer] ){
