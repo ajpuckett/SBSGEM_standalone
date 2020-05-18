@@ -43,6 +43,8 @@ map<int,double> mod_Pyu;    //sin(uangle);
 map<int,double> mod_Pxv;    //cos(vangle);
 map<int,double> mod_Pyv;    //cos(vangle);
 
+map<int,bool> fixmod; //allowing fixing the position and orientation of arbitrary combinations of modules:
+
 long NMAX;
 
 //Let's see if we can improve things by doing one iteration of linearized, then use TMinuit:
@@ -181,6 +183,14 @@ void GEM_align( const char *inputfilename, const char *configfilename, const cha
 	  if( skey == "refmod" ){
 	    TString sflag = ( (TObjString*) (*tokens)[1] )->GetString();
 	    refmod = sflag.Atoi();
+	  }
+
+	  if( skey == "fixmod" && ntokens >= nmodules + 1 ){
+	    for( int i=1; i<ntokens; i++ ){
+	      TString stemp = ( (TObjString*) (*tokens)[i] )->GetString();
+	      int flagtemp = stemp.Atoi();
+	      fixmod[i-1] = (flagtemp != 0 );
+	    }
 	  }
 	  
 	  if( skey == "mod_x0" && ntokens >= nmodules + 1 ){
@@ -428,11 +438,32 @@ void GEM_align( const char *inputfilename, const char *configfilename, const cha
     
     //For each alignment iteration, let's define our chi^2 function of the global geometrical alignment parameters
     //and then try to linearize the problem:
-    int nparam = nmodules*6; //order of parameters is x0,y0,z0,ax,ay,az
+    //    int nparam = nmodules*6; //order of parameters is x0,y0,z0,ax,ay,az
+    int nparam = 0;
+
+    int nfreemodules=0;
+    vector<int> freemodlist;
+    map<int,int> freemodindex;
+    
+    for( int imod=0; imod<nmodules; imod++ ){
+      if( !fixmod[imod] ){
+	nparam += 6;
+	freemodlist.push_back( imod );
+	freemodindex[imod] = nfreemodules;
+	nfreemodules++;
+      }
+    }
     
     if( refmod >= 0 && refmod < nmodules ){
       nparam = (nmodules-1)*6;
     }
+
+    if( nparam == 0 ){
+      cout << "all modules fixed, nothing to align... quitting" << endl;
+      break;
+    }
+
+    cout << "nparam = " << nparam << endl;
     
     TMatrixD M(nparam,nparam);
     TVectorD b(nparam);
@@ -627,53 +658,41 @@ void GEM_align( const char *inputfilename, const char *configfilename, const cha
 	
 	double sigma = 0.1;
 	double weight = pow(sigma_hitpos,-2);
-	
-	int ipar_x0 = 6*module;
-	int ipar_y0 = 6*module+1;
-	int ipar_z0 = 6*module+2;
-	int ipar_ax = 6*module+3;
-	int ipar_ay = 6*module+4;
-	int ipar_az = 6*module+5;
 
 	int ipar_fix[3] = {3*module,3*module+1,3*module+2};
-	
-	
+
 	if( refmod >= 0 && refmod < nmodules ){
 	  if( module > refmod ){
-	    ipar_x0 = 6*(module-1);
-	    ipar_y0 = 6*(module-1)+1;
-	    ipar_z0 = 6*(module-1)+2;
-	    ipar_ax = 6*(module-1)+3;
-	    ipar_ay = 6*(module-1)+4;
-	    ipar_az = 6*(module-1)+5;
-
+	  // 	ipar_x0 = 6*(module-1);
+	  // 	ipar_y0 = 6*(module-1)+1;
+	  // 	ipar_z0 = 6*(module-1)+2;
+	  // 	ipar_ax = 6*(module-1)+3;
+	  // 	ipar_ay = 6*(module-1)+4;
+	  // 	ipar_az = 6*(module-1)+5;
+	  
 	    ipar_fix[0] = 3*(module-1);
 	    ipar_fix[1] = 3*(module-1)+1;
 	    ipar_fix[2] = 3*(module-1)+2;
+	    //   }
+	    // }
 	  }
 	}
-	
-	
-	int ipar[6] = {ipar_x0, ipar_y0, ipar_z0, ipar_ax, ipar_ay, ipar_az };
-      // for( int idx=0; idx<6; idx++ ){
-      //   ipar[idx] = 6*module + idx;
-      // }
-	
-      //Replace "local" coordinates with rotated local coordinates on iterations after first:
-      // if( iter > 0 ){
-      //   xlocal = hitpos_global.X() - modcenter_global.X();
-      //   ylocal = hitpos_global.Y() - modcenter_global.Y();
-      // }
-	
+
 	double xcoeff[6] = {1.0, 0.0, -xptrack, -xptrack*ylocal, xptrack*xlocal, -ylocal };
 	double ycoeff[6] = {0.0, 1.0, -yptrack, -yptrack*ylocal, yptrack*xlocal, xlocal };
-
-      //double xRHS = xtrack + xptrack * hitpos_global.Z() - hitpos_global.X();
-      //double yRHS = ytrack + yptrack * hitpos_global.Z() - hitpos_global.Y();
-
 	
-	
-	if( module != refmod || refmod < 0 || refmod >= nmodules ){ 
+	if(freemodindex.find(module) != freemodindex.end()){
+	  int modidx = freemodindex[module];
+	  
+	  int ipar_x0 = 6*modidx;
+	  int ipar_y0 = 6*modidx+1;
+	  int ipar_z0 = 6*modidx+2;
+	  int ipar_ax = 6*modidx+3;
+	  int ipar_ay = 6*modidx+4;
+	  int ipar_az = 6*modidx+5;
+
+	  int ipar[6] = {ipar_x0, ipar_y0, ipar_z0, ipar_ax, ipar_ay, ipar_az };
+      
 	  for( int i=0; i<6; i++ ){
 	    for( int j=0; j<6; j++ ){
 	      M(ipar[i], ipar[j]) += weight*(xcoeff[i]*xcoeff[j] + ycoeff[i]*ycoeff[j]);
@@ -681,23 +700,24 @@ void GEM_align( const char *inputfilename, const char *configfilename, const cha
 	    b(ipar[i]) += weight*(xcoeff[i]*(xtrack - xlocal) + ycoeff[i]*(ytrack-ylocal));
 	    //b(ipar[i]) += xcoeff[i]*xRHS + ycoeff[i]*yRHS;
 	  }
-
-	  for( int i=0; i<3; i++ ){
-	    for( int j=0; j<3; j++ ){
-	      Mpos( ipar_fix[i], ipar_fix[j] ) += weight*(xcoeff[i]*xcoeff[j]+ycoeff[i]*ycoeff[j]);
-	      Mrot( ipar_fix[i], ipar_fix[j] ) += weight*(xcoeff[i+3]*xcoeff[j+3]+ycoeff[i+3]*ycoeff[j+3]);
-	    }
-	    //For the positional offsets, we need to subtract the sum of all alphax, alphay, alphaz dependent terms from the RHS:
-	    // so this is like -xcoeff[i]*(xcoeff[3]*ax + xcoeff[4]*ay + xcoeff[5]*az)-ycoeff[i]*(ycoeff[3]*ax+ycoeff[4]*ay+ycoeff[5]*az)
-	    //For the rotational offsets, the opposite is true
-	    bpos( ipar_fix[i] ) += weight*( xcoeff[i]*(xtrack-xlocal - (xcoeff[3]*mod_ax[module]+xcoeff[4]*mod_ay[module]+xcoeff[5]*mod_az[module])) +
-					    ycoeff[i]*(ytrack-ylocal - (ycoeff[3]*mod_ax[module]+ycoeff[4]*mod_ay[module]+ycoeff[5]*mod_az[module])) );
-	    brot( ipar_fix[i] ) += weight*( xcoeff[i+3]*(xtrack-xlocal - (xcoeff[0]*mod_x0[module]+xcoeff[1]*mod_y0[module]+xcoeff[2]*mod_z0[module])) +
-					    ycoeff[i+3]*(ytrack-ylocal - (ycoeff[0]*mod_x0[module]+ycoeff[1]*mod_y0[module]+ycoeff[2]*mod_z0[module])) );
+	}
+	
+	for( int i=0; i<3; i++ ){
+	  for( int j=0; j<3; j++ ){
+	    Mpos( ipar_fix[i], ipar_fix[j] ) += weight*(xcoeff[i]*xcoeff[j]+ycoeff[i]*ycoeff[j]);
+	    Mrot( ipar_fix[i], ipar_fix[j] ) += weight*(xcoeff[i+3]*xcoeff[j+3]+ycoeff[i+3]*ycoeff[j+3]);
 	  }
+	  //For the positional offsets, we need to subtract the sum of all alphax, alphay, alphaz dependent terms from the RHS:
+	  // so this is like -xcoeff[i]*(xcoeff[3]*ax + xcoeff[4]*ay + xcoeff[5]*az)-ycoeff[i]*(ycoeff[3]*ax+ycoeff[4]*ay+ycoeff[5]*az)
+	  //For the rotational offsets, the opposite is true
+	  bpos( ipar_fix[i] ) += weight*( xcoeff[i]*(xtrack-xlocal - (xcoeff[3]*mod_ax[module]+xcoeff[4]*mod_ay[module]+xcoeff[5]*mod_az[module])) +
+					  ycoeff[i]*(ytrack-ylocal - (ycoeff[3]*mod_ax[module]+ycoeff[4]*mod_ay[module]+ycoeff[5]*mod_az[module])) );
+	  brot( ipar_fix[i] ) += weight*( xcoeff[i+3]*(xtrack-xlocal - (xcoeff[0]*mod_x0[module]+xcoeff[1]*mod_y0[module]+xcoeff[2]*mod_z0[module])) +
+					  ycoeff[i+3]*(ytrack-ylocal - (ycoeff[0]*mod_x0[module]+ycoeff[1]*mod_y0[module]+ycoeff[2]*mod_z0[module])) );
 	}
       }
-
+    
+    
       if( nevent < NMAX && iter == niter ){
 	HITMOD.push_back( HITMODTEMP );
 	HITX.push_back( HITXTEMP );
@@ -834,25 +854,37 @@ void GEM_align( const char *inputfilename, const char *configfilename, const cha
     TVectorD PreviousSolution_posonly(nparam_pos);
     TVectorD PreviousSolution_rotonly(nparam_rot);
     for( int imodule=0; imodule<nmodules; imodule++ ){
-      int ipar_x0 = imodule*6;
-      int ipar_y0 = imodule*6+1;
-      int ipar_z0 = imodule*6+2;
-      int ipar_ax = imodule*6+3;
-      int ipar_ay = imodule*6+4;
-      int ipar_az = imodule*6+5;
 
+      if( freemodindex.find(imodule) != freemodindex.end() ){
+	int modidx = freemodindex[imodule];
+      
+	int ipar_x0 = modidx*6;
+	int ipar_y0 = modidx*6+1;
+	int ipar_z0 = modidx*6+2;
+	int ipar_ax = modidx*6+3;
+	int ipar_ay = modidx*6+4;
+	int ipar_az = modidx*6+5;
+
+	PreviousSolution(ipar_x0) = mod_x0[imodule];
+	PreviousSolution(ipar_y0) = mod_y0[imodule];
+	PreviousSolution(ipar_z0) = mod_z0[imodule];
+	PreviousSolution(ipar_ax) = mod_ax[imodule];
+	PreviousSolution(ipar_ay) = mod_ay[imodule];
+	PreviousSolution(ipar_az) = mod_az[imodule];
+	
+      }
       int iparx = 3*imodule;
       int ipary = 3*imodule+1;
       int iparz = 3*imodule+2;
       
      
       if( refmod >= 0 && refmod < nmodules && imodule > refmod ){
-	ipar_x0 = 6*(imodule-1);
-	ipar_y0 = 6*(imodule-1)+1;
-	ipar_z0 = 6*(imodule-1)+2;
-	ipar_ax = 6*(imodule-1)+3;
-	ipar_ay = 6*(imodule-1)+4;
-	ipar_az = 6*(imodule-1)+5;
+	// ipar_x0 = 6*(imodule-1);
+	// ipar_y0 = 6*(imodule-1)+1;
+	// ipar_z0 = 6*(imodule-1)+2;
+	// ipar_ax = 6*(imodule-1)+3;
+	// ipar_ay = 6*(imodule-1)+4;
+	// ipar_az = 6*(imodule-1)+5;
 
 	iparx = 3*(imodule-1);
 	ipary = 3*(imodule-1)+1;
@@ -860,12 +892,7 @@ void GEM_align( const char *inputfilename, const char *configfilename, const cha
       }
 
       if( imodule != refmod ){
-	PreviousSolution(ipar_x0) = mod_x0[imodule];
-	PreviousSolution(ipar_y0) = mod_y0[imodule];
-	PreviousSolution(ipar_z0) = mod_z0[imodule];
-	PreviousSolution(ipar_ax) = mod_ax[imodule];
-	PreviousSolution(ipar_ay) = mod_ay[imodule];
-	PreviousSolution(ipar_az) = mod_az[imodule];
+
 
 	PreviousSolution_posonly(iparx) = mod_x0[imodule];
 	PreviousSolution_posonly(ipary) = mod_y0[imodule];
@@ -918,33 +945,15 @@ void GEM_align( const char *inputfilename, const char *configfilename, const cha
     double startpar[6*nmodules];
   
     for( int imodule=0; imodule<nmodules; imodule++ ){
-      int ipar_x0 = imodule*6;
-      int ipar_y0 = imodule*6+1;
-      int ipar_z0 = imodule*6+2;
-      int ipar_ax = imodule*6+3;
-      int ipar_ay = imodule*6+4;
-      int ipar_az = imodule*6+5;
+      if( freemodindex.find(imodule) != freemodindex.end() ){
+	int modidx = freemodindex[imodule];
+	int ipar_x0 = modidx*6;
+	int ipar_y0 = modidx*6+1;
+	int ipar_z0 = modidx*6+2;
+	int ipar_ax = modidx*6+3;
+	int ipar_ay = modidx*6+4;
+	int ipar_az = modidx*6+5;
 
-      int iparx = 3*imodule;
-      int ipary = 3*imodule+1;
-      int iparz = 3*imodule+2;
-      
-      if( refmod >= 0 && refmod < nmodules && imodule > refmod ){
-	ipar_x0 = 6*(imodule-1);
-	ipar_y0 = 6*(imodule-1)+1;
-	ipar_z0 = 6*(imodule-1)+2;
-	ipar_ax = 6*(imodule-1)+3;
-	ipar_ay = 6*(imodule-1)+4;
-	ipar_az = 6*(imodule-1)+5;
-
-	iparx = 3*(imodule-1);
-	ipary = 3*(imodule-1)+1;
-	iparz = 3*(imodule-1)+2;
-      }
-
-      //now the solution represents the CHANGE in each parameter from the previous iteration or, on the first iteration the starting solution:
-      
-      if( imodule != refmod ){
 	mod_x0[imodule] = Solution(ipar_x0);
 	mod_y0[imodule] = Solution(ipar_y0);
 	mod_z0[imodule] = Solution(ipar_z0);
@@ -959,7 +968,47 @@ void GEM_align( const char *inputfilename, const char *configfilename, const cha
 	  mod_ax[imodule] += prev_ax[imodule];
 	  mod_ay[imodule] += prev_ay[imodule];
 	  mod_az[imodule] += prev_az[imodule];
-	} 
+	}
+
+	//Strictly speaking, I don't think this is necessary:
+	PreviousSolution(ipar_x0) = mod_x0[imodule];
+	PreviousSolution(ipar_y0) = mod_y0[imodule];
+	PreviousSolution(ipar_z0) = mod_z0[imodule];
+	PreviousSolution(ipar_ax) = mod_ax[imodule];
+	PreviousSolution(ipar_ay) = mod_ay[imodule];
+	PreviousSolution(ipar_az) = mod_az[imodule];
+	
+	//	}
+	mod_dx0[imodule] = sqrt(fabs(M(ipar_x0,ipar_x0)));
+	mod_dy0[imodule] = sqrt(fabs(M(ipar_y0,ipar_y0)));
+	mod_dz0[imodule] = sqrt(fabs(M(ipar_z0,ipar_z0)));
+	mod_dax[imodule] = sqrt(fabs(M(ipar_ax,ipar_ax)));
+	mod_day[imodule] = sqrt(fabs(M(ipar_ay,ipar_ay)));
+	mod_daz[imodule] = sqrt(fabs(M(ipar_az,ipar_az)));
+	
+      }
+      
+      int iparx = 3*imodule;
+      int ipary = 3*imodule+1;
+      int iparz = 3*imodule+2;
+      
+      if( refmod >= 0 && refmod < nmodules && imodule > refmod ){
+	// ipar_x0 = 6*(imodule-1);
+	// ipar_y0 = 6*(imodule-1)+1;
+	// ipar_z0 = 6*(imodule-1)+2;
+	// ipar_ax = 6*(imodule-1)+3;
+	// ipar_ay = 6*(imodule-1)+4;
+	// ipar_az = 6*(imodule-1)+5;
+
+	iparx = 3*(imodule-1);
+	ipary = 3*(imodule-1)+1;
+	iparz = 3*(imodule-1)+2;
+      }
+
+      //now the solution represents the CHANGE in each parameter from the previous iteration or, on the first iteration the starting solution:
+      
+      if( imodule != refmod ){
+	
 	
 	if( offsetsonlyflag != 0 ){
 	  mod_x0[imodule] = Solution_posonly(iparx) + prev_x0[imodule];
@@ -984,21 +1033,7 @@ void GEM_align( const char *inputfilename, const char *configfilename, const cha
 
 	
 	
-	//Strictly speaking, I don't think this is necessary:
-	PreviousSolution(ipar_x0) = mod_x0[imodule];
-	PreviousSolution(ipar_y0) = mod_y0[imodule];
-	PreviousSolution(ipar_z0) = mod_z0[imodule];
-	PreviousSolution(ipar_ax) = mod_ax[imodule];
-	PreviousSolution(ipar_ay) = mod_ay[imodule];
-	PreviousSolution(ipar_az) = mod_az[imodule];
 	
-	//	}
-	mod_dx0[imodule] = sqrt(fabs(M(ipar_x0,ipar_x0)));
-	mod_dy0[imodule] = sqrt(fabs(M(ipar_y0,ipar_y0)));
-	mod_dz0[imodule] = sqrt(fabs(M(ipar_z0,ipar_z0)));
-	mod_dax[imodule] = sqrt(fabs(M(ipar_ax,ipar_ax)));
-	mod_day[imodule] = sqrt(fabs(M(ipar_ay,ipar_ay)));
-	mod_daz[imodule] = sqrt(fabs(M(ipar_az,ipar_az)));
       }
 
       for( int ipar=0; ipar<6; ipar++ ){
