@@ -2617,6 +2617,7 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
   int Ntracks;
   //  int TrackLayers[nlayers];
   double CALOsum;
+  int NGOODSCINT;
   
   int Nclustperlayer[nlayers];
   
@@ -2648,6 +2649,7 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
 
   Tout->Branch("Ntracks",&Ntracks,"Ntracks/I");
   Tout->Branch("CALOsum",&CALOsum,"CALOsum/D");
+  Tout->Branch("NGOODSCINT", &NGOODSCINT, "NGOODSCINT/I");
   Tout->Branch("TrackXp",&TrackXp,"TrackXp/D");
   Tout->Branch("TrackYp",&TrackYp,"TrackYp/D");
   Tout->Branch("TrackX",&TrackX,"TrackX/D");
@@ -2843,12 +2845,36 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
 
   fout->cd();
 
+  
   TH2D *hCALfadc_vs_ch = new TH2D("hCALfadc_vs_ch","",32,-0.5,31.5,1000,0.0,25000.0);
   TH2D *hCALftime_vs_ch = new TH2D("hCALftime_vs_ch","",32,-0.5,31.5,51,-0.5,50.5);
   TH1D *hCALfadc_sum = new TH1D("hCALfadc_sum","",2000,0.0,50000.0);
+
+  //TH1D *hCALfadc_sum_nocuts = new TH1D("hCALfadc_sum_nocuts","",2000,0.0,50000.0);
   // TH1D *hCALfadc_shsum = new TH1D("hCALfadc_shsum","",2000,0.0,50000.0);
   // TH1D *hCALfadc_pssum = new TH1D("hCALfadc_pssum","",2000,0.0,50000.0);
   //TH2D *hCALfadc_sh_vs_ps = new TH2D("hCALfadc_sh_vs_ps","",250,0.0,50000.0,250,0.0,50000.0);
+
+  //Scintillator info:
+  TH2D *hSCINT_tdc_vs_ch = new TH2D("hSCINT_tdc_vs_ch", "", 25,-0.5,24.5, 600,0.0,150.0 );
+  TH1D *hNgoodScint = new TH1D("hNgoodScint", "N scint. TDC hits", 11, -0.5, 10.5 ); 
+
+
+  TH2D *hCALfadc_vs_ch_goodtrack = new TH2D("hCALfadc_vs_ch_goodtrack","",32,-0.5,31.5,1000,0.0,25000.0);
+  TH2D *hCALftime_vs_ch_goodtrack = new TH2D("hCALftime_vs_ch_goodtrack","",32,-0.5,31.5,51,-0.5,50.5);
+  TH1D *hCALfadc_sum_goodtrack = new TH1D("hCALfadc_sum_goodtrack","",2000,0.0,50000.0);
+
+  // TH1D *hCALfadc_sum_nocuts = new TH1D("hCALfadc_sum_nocuts","",2000,0.0,50000.0);
+  // TH1D *hCALfadc_shsum = new TH1D("hCALfadc_shsum","",2000,0.0,50000.0);
+  // TH1D *hCALfadc_pssum = new TH1D("hCALfadc_pssum","",2000,0.0,50000.0);
+  //TH2D *hCALfadc_sh_vs_ps = new TH2D("hCALfadc_sh_vs_ps","",250,0.0,50000.0,250,0.0,50000.0);
+
+  //Scintillator info:
+  TH2D *hSCINT_tdc_vs_ch_goodtrack = new TH2D("hSCINT_tdc_vs_ch_goodtrack", "", 25,-0.5,24.5, 600, 0.0, 150.0);
+  TH1D *hNgoodScint_goodtrack = new TH1D("hNgoodScint_goodtrack", "N scint. TDC hits", 11, -0.5, 10.5 ); 
+
+  TH1D *hNtracks_nocuts = new TH1D("hNtracks_nocuts", "Number of tracks/trigger", 11, -0.5, 10.5 );
+  TH1D *hNtracks_GoodScintAndCALO = new TH1D("hNtracks_GoodScintAndCALO", "Number of tracks/trigger with good scint. and CALO hits", 11, -0.5, 10.5);
   
   TH1D *hNlayers_hit = new TH1D("hNlayers_hit","",nlayers+1,-0.5,nlayers+0.5);
   TH1D *hNlayers_hitX = new TH1D("hNlayers_hitX","",nlayers+1,-0.5,nlayers+0.5);
@@ -2971,7 +2997,7 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
   
   TH1D *hNtracks_found = new TH1D("hNtracks_found","Number of tracks found",11,-0.5,10.5);
   TH1D *hNhitspertrack = new TH1D("hNhitspertrack","Number of hits per track",nlayers+1,-0.5,nlayers+0.5);
-
+  
   //(resid^2)/sigma^2 = chi^2: Max resid = sigma*sqrt(chi^2)
 
   double maxresid = 2.0*sigma_hitpos*sqrt(TrackChi2Cut);
@@ -3186,6 +3212,53 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
     // map<int,map<int,double> > Tmean_ystrips_walkcor;
     // map<int,map<int,double> > Tsigma_xstrips_walkcor;
     // map<int,map<int,double> > Tsigma_ystrips_walkcor;
+
+    if( DataFormat == "HALLA" ){ //Fill CALO and SCINT information:
+      double fadcsum = 0.0;
+      double fshowersum = 0.0;
+      double fpreshowersum=0.0;
+      
+      for( int icalhit=0; icalhit<nfadc; icalhit++ ){
+	//int fCH = fCH[icalhit];
+	int chan = fCH[icalhit] % 256;
+	int slot = fCH[icalhit] >> 8;
+	
+	int globalchan = chan + (slot-17)*16;
+	
+	//cout << "chan, slot, globalchan = " << chan << ", " << slot << ", " << globalchan << endl;
+	
+	int maxtimesample = ftimting[icalhit];
+	
+	hCALfadc_vs_ch->Fill( globalchan, fadc[icalhit] );
+	hCALftime_vs_ch->Fill( globalchan, ftimting[icalhit] );
+	
+	int tmin = 30, tmax=45;
+	if( globalchan == 19 ) tmin = 24;
+	
+	if( globalchan < 21 || globalchan > 26 ){
+	  if( maxtimesample >= tmin && maxtimesample <= tmax ){
+	    fadcsum += fadc[icalhit];
+	  }
+	}
+      }
+      
+      hCALfadc_sum->Fill(fadcsum);
+
+      CALOsum = fadcsum;
+
+      int ngoodscint = 0;
+      for( int itdc=0; itdc<ntdc; itdc++ ){
+	if( tCH[itdc] < 10 && 110.0< ttiming[itdc] && ttiming[itdc] < 135.0 ){
+	  ngoodscint++;
+	}
+	hSCINT_tdc_vs_ch->Fill( tCH[itdc], ttiming[itdc] );
+      }
+
+      hNgoodScint->Fill( ngoodscint );
+
+      NGOODSCINT = ngoodscint;
+      
+    }
     
     map<int,int> mod_maxstripX;
     map<int,double> mod_ADCmaxX;
@@ -3667,9 +3740,9 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
 	    
 	    int maxtimesample = ftimting[icalhit];
 	    
-	    hCALfadc_vs_ch->Fill( globalchan, fadc[icalhit] );
-	    hCALftime_vs_ch->Fill( globalchan, ftimting[icalhit] );
-
+	    hCALfadc_vs_ch_goodtrack->Fill( globalchan, fadc[icalhit] );
+	    hCALftime_vs_ch_goodtrack->Fill( globalchan, ftimting[icalhit] );
+	    
 	    int tmin = 30, tmax=45;
 	    if( globalchan == 19 ) tmin = 24;
 	    
@@ -3680,9 +3753,21 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
 	    }
 	  }
 
-	  hCALfadc_sum->Fill(fadcsum);
+	  hCALfadc_sum_goodtrack->Fill(fadcsum);
 
 	  CALOsum = fadcsum;
+
+	  int ngoodscint = 0;
+	  for( int itdc=0; itdc<ntdc; itdc++ ){
+	    if( tCH[itdc] < 10 && 110.0< ttiming[itdc] && ttiming[itdc] < 135.0 ){
+	      ngoodscint++;
+	    }
+	    hSCINT_tdc_vs_ch_goodtrack->Fill( tCH[itdc], ttiming[itdc] );
+	  }
+	  
+	  hNgoodScint_goodtrack->Fill( ngoodscint );
+	  
+	  NGOODSCINT = ngoodscint;
 	  
 	}
 	
@@ -3999,6 +4084,11 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
 	}
       }
 
+      hNtracks_nocuts->Fill( tracktemp.ntracks );
+      if( CALOsum > 5500.0 && NGOODSCINT >= 2 ){
+	hNtracks_GoodScintAndCALO->Fill( tracktemp.ntracks );
+      }
+      
       if( tracktemp.ntracks > 0 ){
 	Tout->Fill();
       }
@@ -4335,7 +4425,14 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
       //	  c1->Update();
 	  
 	  
+    } else {
+      hNtracks_nocuts->Fill( 0 );
+      if( CALOsum >= 5500.0 && NGOODSCINT >= 2 ){
+	hNtracks_GoodScintAndCALO->Fill( 0 );
+      }
     }
+
+    
   
 
     for( int ilayer=0; ilayer<nlayers; ilayer++ ){

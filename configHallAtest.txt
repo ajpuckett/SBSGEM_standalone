@@ -78,6 +78,6 @@ trackmaxslopeY 1.0
 #maxADCXYthreshold 1000.0
 tstripcut_nsigma 5.0
 #NMAX 100000000
-NMAX 1000000
+NMAX 2000000
 #clustmap_fname HallA_allevents_with_moments.root
 endconfig
