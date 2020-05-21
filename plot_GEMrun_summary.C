@@ -1,4 +1,4 @@
-void plot_GEMrun_summary(const char *filename, int nlayers=4, int nmodules=12, double chi2cut=50.0, double CALOCUT=0.0){
+void plot_GEMrun_summary(const char *filename, int nlayers=4, int nmodules=12, double chi2cut=50.0, double CALOCUT=0.0, int longdimension=1){
   gROOT->ProcessLine(".x ~/rootlogon.C");
 
   gStyle->SetOptStat(0);
@@ -486,7 +486,8 @@ void plot_GEMrun_summary(const char *filename, int nlayers=4, int nmodules=12, d
   
   hYresid->Draw();
 
-  
+  //  int npixelx =2400;
+  // int npixely 
   
   TCanvas *c2 = new TCanvas("c2","c2",2400,1200);
 
@@ -500,9 +501,17 @@ void plot_GEMrun_summary(const char *filename, int nlayers=4, int nmodules=12, d
   gStyle->SetTitleSize(.06,"XYZ");
 
   gROOT->ForceStyle();
-  
-  c2->Divide(nlayers,1,.001,.001);
 
+  //Now let's figure out how to divide the canvas such that the aspect ratio is not too distorted:
+
+  if( longdimension == 1 ){ //long dimension of the layers is along the vertical axis of the histogram:
+    c2->Divide(nlayers,1,.001,.001);
+  } else { //long dimension of the layers is along the horizontal axis of the histogram, make two columns, and vertical divisions
+    int nhalf = int(double(nlayers)/2.0+0.5); //For odd numbers, this will round up, for even numbers this will round down
+    c2->Divide(2,nhalf,.001,.001);
+  }
+
+  
   for( int ilayer = 0; ilayer<nlayers; ilayer++ ){
     TH2D *htemp = ( (TH2D*) (*heff_layers)[ilayer] );
 
