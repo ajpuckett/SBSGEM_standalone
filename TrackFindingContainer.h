@@ -261,12 +261,11 @@ struct SBSReconTrack{
         projy = trackPara[2] + trackPara[3]*tarz;
     }
     
-    bool ContainOutlier(double testr){
-        //no outlier if there are only two hits
-        if (hits.size() <= 2) return false;
-        
-        //exclude one hit each time, fit the rest, and see if the 
-        //excluded hit falls in the test radius r
+    void CheckOutlier(double testr){
+        //exclude each hit and fit the rest to check if the excluded hit
+        //is compatible with the rest
+        if (hits.size() <= 2) return;
+        int index = -1;
         for (unsigned int i=0; i<hits.size(); i++){
             double csum[6] = {0};
             for (unsigned int j=0; j<hits.size(); j++){
@@ -291,9 +290,17 @@ struct SBSReconTrack{
 		    
 		    double dist  = sqrt(pow(projx - hits[i]->x, 2) 
 		                      + pow(projy - hits[i]->y, 2));
-		    if (dist > testr) return true;
+		    if (dist > testr) index = i;
         }
         
+        if (index >= 0) {
+            hits.erase(hits.begin() + index);
+            nmissinghits++;
+        }
+    }
+    
+    bool ForwardSearchTest(double testr){
+        if (hits.size() <= 2) return false;
         //check also forward searching
         for (unsigned int i = 2; i<hits.size(); i++){
             double csum[6] = {0};
@@ -318,39 +325,13 @@ struct SBSReconTrack{
 		    
 		    double dist  = sqrt(pow(projx - hits[i]->x, 2) 
 		                      + pow(projy - hits[i]->y, 2));
-		    if (dist > testr) return true;
-        }
-        
-        //and backward searching
-        int totalN = (int)hits.size();
-        for (int i = totalN - 3; i>=0; i--){
-            double csum[6] = {0};
-            for (unsigned int j=totalN - 1; j>i; j--){
-                csum[0] += (hits[j]->x);
-                csum[1] += (hits[j]->y);
-                csum[2] += (hits[j]->z);
-                csum[3] += (hits[j]->x)*(hits[j]->z);
-                csum[4] += (hits[j]->y)*(hits[j]->z);
-                csum[5] += pow((hits[j]->z),2);
-            }
-            int nhits = totalN - 1 - i; 
-            double denom = (csum[5]*nhits - pow(csum[2],2));
-            
-            double tr_x  = (csum[5]*csum[0] - csum[2]*csum[3])/denom;
-            double tr_tx = (nhits*csum[3] - csum[0]*csum[2])/denom;
-            double tr_y  = (csum[5]*csum[1] - csum[2]*csum[4])/denom;
-		    double tr_ty = (nhits*csum[4] - csum[1]*csum[2])/denom;
-		    
-		    double projx = tr_x + tr_tx * hits[i]->z;
-		    double projy = tr_y + tr_ty * hits[i]->z;
-		    
-		    double dist  = sqrt(pow(projx - hits[i]->x, 2) 
-		                      + pow(projy - hits[i]->y, 2));
+		                      
 		    if (dist > testr) return true;
         }
         
         return false;
     }
+        
 };
 
 //used for sorting recon tracks using c++ sort algorithm 
