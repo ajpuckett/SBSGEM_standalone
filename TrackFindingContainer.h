@@ -171,6 +171,14 @@ struct GridHitContainer{
         if (it == gridArray.end()) return false;
         else return true;
     }
+    
+    int GetTotalHit(){
+        int totalHit = 0;
+        for (std::map<int, std::vector<GridHit*>>::iterator it = hitArray.begin(); it != hitArray.end(); ++it)
+        totalHit += (it->second).size();
+        
+        return totalHit;
+    }
 };
 
 struct SBSReconTrack{

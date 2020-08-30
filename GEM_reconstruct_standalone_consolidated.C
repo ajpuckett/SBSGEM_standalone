@@ -56,7 +56,7 @@ const int MAXNCH = 60000;
 const int MAXNFADC = 100;
 const int MAXNTDC  = 100;
 
-const int TOTAL_REQUIRED_HIT = 4;
+const int TOTAL_REQUIRED_HIT = 3;
 
 int nstripsx = 1280;
 int nstripsy = 1024;
@@ -1640,7 +1640,6 @@ void new_find_tracks(map<int,clusterdata_t> mod_clusters, trackdata_t &trackdata
             cout<<"grid container "<<layer<<" did not register module "<<module<<endl;
             continue;
         }
-
         for( int iclust=0; iclust<mod_clusters[module].nclust2D; iclust++ ){
         gridContainer[layer].AddHit(layer, module, iclust, 
                                     mod_clusters[module].xglobal2D[iclust],
@@ -1693,7 +1692,6 @@ void new_find_tracks(map<int,clusterdata_t> mod_clusters, trackdata_t &trackdata
         }
         
     }
-    
     //NOTE: the above procedure should ensure that layerconfig is sorted, that is
     //we start with configuration that can potentially give tracks with more hits
     
@@ -1701,10 +1699,17 @@ void new_find_tracks(map<int,clusterdata_t> mod_clusters, trackdata_t &trackdata
     vector<SBSReconTrack> allTracks;
     allTracks.clear();
     
+    long long int totalCombo = 1;
+    
     for (unsigned int conf = 0; conf < layerconfig.size(); conf++){
         int front = layerconfig[conf].first;
         int back  = layerconfig[conf].second;
         
+        //calculate the total number of possible combo, skip this config if 
+        //there are too many
+        totalCombo = 1;
+        for (int i=front; i<=back; i++) totalCombo *= gridContainer[i].GetTotalHit();
+        if (totalCombo > maxnhitcombinations) continue;
         
         //we start tracking with the front and back trackers (seed), this provides
         //the largest leverage so that we have a good estimate for the track slope
@@ -1804,6 +1809,7 @@ void new_find_tracks(map<int,clusterdata_t> mod_clusters, trackdata_t &trackdata
                                                 if (dist > TrackFindingMaxRadius) continue;
                                                 
                                                 double dz = hitinrange[thisMod][jj]->at(kk)->z - tmpTrack.hits.back()->z;
+                                                assert(dz > 0);
                                                 double tmpSlopeX = (hitinrange[thisMod][jj]->at(kk)->x - tmpTrack.hits.back()->x)/dz;
                                                 double tmpSlopeY = (hitinrange[thisMod][jj]->at(kk)->y - tmpTrack.hits.back()->y)/dz;
                                                 
@@ -1925,7 +1931,7 @@ void new_find_tracks(map<int,clusterdata_t> mod_clusters, trackdata_t &trackdata
             }
         }
     }
-    
+
     //finished track finding, now we save the tracks into output container
     std::sort(allTracks.begin(), allTracks.end(), SortTracks);
     
@@ -1996,7 +2002,6 @@ void new_find_tracks(map<int,clusterdata_t> mod_clusters, trackdata_t &trackdata
 	    
 	    trackdata.ntracks++;
     }
-    
 }
 
 void find_tracks( map<int,clusterdata_t> mod_clusters, trackdata_t &trackdata ){
@@ -3550,7 +3555,6 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
 					   nbinsx_hitmap, -mod_Lx[imodule]/2.0-10.0,mod_Lx[imodule]/2.0+10.0 );
     
   }
-  
   
   while( C->GetEntry(nevent++) && (NMAX < 0 || nevent < NMAX ) ){
     if( nevent % 1000 == 0 ) cout << nevent << endl;
