@@ -56,7 +56,7 @@ const int MAXNCH = 60000;
 const int MAXNFADC = 100;
 const int MAXNTDC  = 100;
 
-const int TOTAL_REQUIRED_HIT = 4;
+const int TOTAL_REQUIRED_HIT = 3;
 
 int nstripsx = 1280;
 int nstripsy = 1024;
@@ -1640,7 +1640,6 @@ void new_find_tracks(map<int,clusterdata_t> mod_clusters, trackdata_t &trackdata
             cout<<"grid container "<<layer<<" did not register module "<<module<<endl;
             continue;
         }
-
         for( int iclust=0; iclust<mod_clusters[module].nclust2D; iclust++ ){
         gridContainer[layer].AddHit(layer, module, iclust, 
                                     mod_clusters[module].xglobal2D[iclust],
@@ -1693,7 +1692,6 @@ void new_find_tracks(map<int,clusterdata_t> mod_clusters, trackdata_t &trackdata
         }
         
     }
-    
     //NOTE: the above procedure should ensure that layerconfig is sorted, that is
     //we start with configuration that can potentially give tracks with more hits
     
@@ -1701,10 +1699,17 @@ void new_find_tracks(map<int,clusterdata_t> mod_clusters, trackdata_t &trackdata
     vector<SBSReconTrack> allTracks;
     allTracks.clear();
     
+    long long int totalCombo = 1;
+    
     for (unsigned int conf = 0; conf < layerconfig.size(); conf++){
         int front = layerconfig[conf].first;
         int back  = layerconfig[conf].second;
         
+        //calculate the total number of possible combo, skip this config if 
+        //there are too many
+        totalCombo = 1;
+        for (int i=front; i<=back; i++) totalCombo *= gridContainer[i].GetTotalHit();
+        if (totalCombo > maxnhitcombinations) continue;
         
         //we start tracking with the front and back trackers (seed), this provides
         //the largest leverage so that we have a good estimate for the track slope
@@ -1726,8 +1731,8 @@ void new_find_tracks(map<int,clusterdata_t> mod_clusters, trackdata_t &trackdata
                         int nmissinghits = gridContainer.size() - (back - front + 1);
                         
                         SBSReconTrack thisTrack(nmissinghits);
-                        thisTrack.AddAndFilterWithLLS(gridContainer[front].hitArray[modf][i]);
                         thisTrack.AddAndFilterWithLLS(gridContainer[back].hitArray[modb][j] );
+                        thisTrack.AddAndFilterWithLLS(gridContainer[front].hitArray[modf][i]);
                         
                         if (fabs(thisTrack.trackPara[1] - constraintSlopeX) > TrackMaxSlopeX || 
                             fabs(thisTrack.trackPara[3] - constraintSlopeY) > TrackMaxSlopeY) continue;
@@ -1797,10 +1802,19 @@ void new_find_tracks(map<int,clusterdata_t> mod_clusters, trackdata_t &trackdata
                                                 if ((hitinrange[thisMod][jj]->at(kk))->used) continue;
                                                 
                                                 double projx, projy;
-                                                tracksystem[itrack].GetProjection((hitinrange[thisMod][jj]->at(kk))->z, projx, projy);
+                                                tmpTrack.GetProjection((hitinrange[thisMod][jj]->at(kk))->z, projx, projy);
                                                 double dist = sqrt(pow(projx - (hitinrange[thisMod][jj]->at(kk))->x, 2) 
                                                                  + pow(projy - (hitinrange[thisMod][jj]->at(kk))->y, 2));
+                                                
                                                 if (dist > TrackFindingMaxRadius) continue;
+                                                
+                                                double dz = hitinrange[thisMod][jj]->at(kk)->z - tmpTrack.hits.back()->z;
+                                                assert(dz > 0);
+                                                double tmpSlopeX = (hitinrange[thisMod][jj]->at(kk)->x - tmpTrack.hits.back()->x)/dz;
+                                                double tmpSlopeY = (hitinrange[thisMod][jj]->at(kk)->y - tmpTrack.hits.back()->y)/dz;
+                                                
+                                                if (fabs(tmpSlopeX - constraintSlopeX) > TrackMaxSlopeX || 
+                                                    fabs(tmpSlopeY - constraintSlopeY) > TrackMaxSlopeY) continue;
                                                 
                                                 if (noHitFound) {
                                                     tracksystem[itrack].AddAndFilterWithLLS(hitinrange[thisMod][jj]->at(kk));
@@ -1816,6 +1830,11 @@ void new_find_tracks(map<int,clusterdata_t> mod_clusters, trackdata_t &trackdata
                                         }
                                     }
                                     if (noHitFound) tracksystem[itrack].nmissinghits++;
+                                    else{
+                                        //even if there is hit found we still consider no hit found as one possiblity
+                                        tracksystem.push_back(tmpTrack);
+                                        tracksystem[tracksystem.size() - 1].nmissinghits++;
+                                    }
                                 }
                             }
                             //examine all track status before moving towards the next plane
@@ -1853,9 +1872,15 @@ void new_find_tracks(map<int,clusterdata_t> mod_clusters, trackdata_t &trackdata
                                 continue;
                             }
                             
-                            //check if there is any outlier
-                            if (tracksystem[itrack].ContainOutlier(TrackFindingMaxRadius)){
-                                tracksystem[itrack].status = false;
+                            std::sort(tracksystem[itrack].hits.begin(), tracksystem[itrack].hits.end(), SortHits);
+                            tracksystem[itrack].CheckOutlier(TrackFindingMaxRadius);
+                            if (tracksystem[itrack].nmissinghits > gridContainer.size() - TOTAL_REQUIRED_HIT ){
+                                tracksystem[itrack].status = false; 
+                                continue;
+                            }
+                            
+                            if (tracksystem[itrack].ForwardSearchTest(TrackFindingMaxRadius)){
+                                tracksystem[itrack].status = false; 
                                 continue;
                             }
                             
@@ -1906,16 +1931,13 @@ void new_find_tracks(map<int,clusterdata_t> mod_clusters, trackdata_t &trackdata
             }
         }
     }
-    
+
     //finished track finding, now we save the tracks into output container
     std::sort(allTracks.begin(), allTracks.end(), SortTracks);
     
     map<int, vector<GridHit*>> goodHits;
     
     for (unsigned int i=0; i<allTracks.size(); i++){
-        
-        //sort the hit array of the track, in increasing layer order
-        std::sort(allTracks[i].hits.begin(), allTracks[i].hits.end(), SortHits);
         
         bool flag = false;
         for (unsigned int j=0; j<allTracks[i].hits.size(); j++){
@@ -1980,7 +2002,6 @@ void new_find_tracks(map<int,clusterdata_t> mod_clusters, trackdata_t &trackdata
 	    
 	    trackdata.ntracks++;
     }
-    
 }
 
 void find_tracks( map<int,clusterdata_t> mod_clusters, trackdata_t &trackdata ){
@@ -3535,8 +3556,6 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
     
   }
   
-  
-  
   while( C->GetEntry(nevent++) && (NMAX < 0 || nevent < NMAX ) ){
     if( nevent % 1000 == 0 ) cout << nevent << endl;
 
@@ -4128,8 +4147,6 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
 	//find_tracks( mod_clusters, tracktemp );
 	auto end = high_resolution_clock::now();
 	totalTime += duration_cast<nanoseconds>(end - start);
-	
-	
 	
 	//cout << "track finding successful..." << endl;
 	
