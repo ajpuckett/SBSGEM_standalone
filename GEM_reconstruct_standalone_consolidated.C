@@ -58,6 +58,8 @@ const int MAXNTDC  = 100;
 
 const int TOTAL_REQUIRED_HIT = 3;
 
+int TrackingAlgorithmFlag = 0; //0 = OLD, "brute force" algorithm, 1 = NEW, "grid container" algorithm"
+
 int nstripsx = 1280;
 int nstripsy = 1024;
 int nmodules = 12;
@@ -2589,6 +2591,11 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
 	if( ntokens >= 2 ){
 	  TString skey = ( (TObjString*) (*tokens)[0] )->GetString();
 
+	  if( skey == "TrackingAlgorithm" ){
+	    TString stemp = ( (TObjString*) (*tokens)[1] )->GetString();
+	    TrackingAlgorithmFlag = stemp.Atoi();
+	  }
+	  
 	  if( skey == "reusestripsflag" ){ //flag to allow reuse of strips in multiple 2D clusters:
 	    TString stemp = ( (TObjString*) (*tokens)[1] )->GetString();
 	    reusestripsflag = stemp.Atoi();
@@ -2955,6 +2962,7 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
 	  }
 	      
 	}
+	tokens->Delete();
       }
     }
   }
@@ -4143,8 +4151,12 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
 	//define the forward and backward constraint points
 	TVector3 fcp(0, 0, zavg_layer[0] - 10);
 	TVector3 bkp(0, 0, zavg_layer[nlayers-1] + 10);
-	new_find_tracks( mod_clusters, tracktemp, fcp, bkp);
-	//find_tracks( mod_clusters, tracktemp );
+
+	if( TrackingAlgorithmFlag != 0 ){
+	  new_find_tracks( mod_clusters, tracktemp, fcp, bkp);
+	} else {
+	  find_tracks( mod_clusters, tracktemp );
+	}
 	auto end = high_resolution_clock::now();
 	totalTime += duration_cast<nanoseconds>(end - start);
 	
@@ -4924,13 +4936,13 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
   
   auto program_end = high_resolution_clock::now();
   
-  cout<<"total time "<<(double)totalTime.count() / 1e9<<" seconds "<<endl;
+  cout<<"total time spent in tracking: "<<(double)totalTime.count() / 1e9<<" seconds "<<endl;
   
   auto program_time = duration_cast<nanoseconds>(program_end - program_start); 
   
-  cout<<"total time "<<(double)program_time.count() / 1e9<<" seconds" <<endl;
+  cout<<"total program execution time: "<<(double)program_time.count() / 1e9<<" seconds" <<endl;
   
-  cout<<"ratio "<<((double)totalTime.count()/(double)program_time.count())<<endl;
+  cout<<"fraction of time spent in track-finding: "<<((double)totalTime.count()/(double)program_time.count())<<endl;
 }
 
 

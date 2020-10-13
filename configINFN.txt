@@ -120,4 +120,5 @@ maxADCXYthreshold 5000.0
 tstripcut_nsigma 5.0
 NMAX 1000000
 reusestripsflag 1
+TrackingAlgorithm 1
 endconfig

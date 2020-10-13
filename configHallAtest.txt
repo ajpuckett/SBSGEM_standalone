@@ -52,7 +52,7 @@ mod_uangle 0.0 0.0 0.0 0.0 0.0
 # Setting the "V" strip angle to -90 degrees amounts to reversing the direction of the Y axis (I hope):
 mod_vangle -90.0 -90.0 -90.0 -90.0 -90.0
 mod_RYX           1.02485        1.0165      0.993901      0.990947      0.981436 
-eventdisplay 0
+eventdisplay 1
 clustersigma 0.4
 clustertau 54.0
 varyclustersigma 0
@@ -80,4 +80,5 @@ tstripcut_nsigma 5.0
 #NMAX 100000000
 NMAX 2000000
 #clustmap_fname HallA_allevents_with_moments.root
+TrackingAlgorithm 1
 endconfig
