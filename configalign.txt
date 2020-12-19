@@ -64,7 +64,7 @@ threshold_clustersum 600.0
 #threshold_stripsum  300.0
 #threshold_clustersum 750.0
 offsetsonly 0
-niter 100
+niter 1
 rotationsonly 0
 refmod -1
 endconfig

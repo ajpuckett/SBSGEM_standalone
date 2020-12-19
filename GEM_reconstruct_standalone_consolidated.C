@@ -3029,6 +3029,9 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
   //  int TrackLayers[nlayers];
   double CALOsum;
   int NGOODSCINT;
+  int EventID;
+  //int NstripX[nmodules];
+  //int NstripY[nmodules];
   
   int Nclustperlayer[nlayers];
   
@@ -3058,6 +3061,7 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
   int HitNstripX[nlayers];
   int HitNstripY[nlayers];
 
+  Tout->Branch("EventID",&EventID,"EventID/I");
   Tout->Branch("Ntracks",&Ntracks,"Ntracks/I");
   Tout->Branch("CALOsum",&CALOsum,"CALOsum/D");
   Tout->Branch("NGOODSCINT", &NGOODSCINT, "NGOODSCINT/I");
@@ -3567,6 +3571,8 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
   while( C->GetEntry(nevent++) && (NMAX < 0 || nevent < NMAX ) ){
     if( nevent % 1000 == 0 ) cout << nevent << endl;
 
+    EventID = evtID;
+    
     //cout << "Processing event " << nevent << endl;
     
     //Clustering and hit reconstruction:
@@ -4334,7 +4340,7 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
 	      tracktemp.eresidx_hits[itrack][ihit] = uhittemp - utracktemp;
 	      tracktemp.eresidy_hits[itrack][ihit] = vhittemp - vtracktemp;
 
-	      hTrackXeresid_vs_layer->Fill( layer, utracktemp - uhittemp );
+	      hTrackXeresid_vs_layer->Fill( layer, utracktemp - uhittemp ); //resid = utrack - uhit --> uhit = utrack - resid
 	      hTrackYeresid_vs_layer->Fill( layer, vtracktemp - vhittemp );
 
 	      hTrackXeresid_vs_module->Fill( module, utracktemp - uhittemp );

@@ -432,6 +432,8 @@ void plot_GEMrun_summary(const char *filename, int nlayers=4, int nmodules=12, d
 
   TH1D *hXeresid = new TH1D("hXeresid","",1000,-6,6);
   TH1D *hYeresid = new TH1D("hYeresid","",1000,-6,6);
+
+  cut += "TrackNhits==4";
   
   Tout->Project("hXeresid","HitXresidE",cut);
   Tout->Project("hYeresid","HitYresidE",cut);
