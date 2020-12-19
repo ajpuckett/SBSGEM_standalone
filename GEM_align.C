@@ -434,14 +434,19 @@ void GEM_align( const char *inputfilename, const char *configfilename, const cha
  
   //niter = 1;
   double trackchi2_cut = 10000.0;
+  double oldchi2cut = trackchi2_cut;
   //double resid_cut = 100.0; //mm
   //double resid2_sum = 0.0;
   
   for( int iter=0; iter<=niter; iter++ ){
+
+    //at beginning of each iteration check:
+    //if this is not the first iteration, cut short if chi2 stops improving:
+    if( iter > 0 && fabs( trackchi2_cut/oldchi2cut - 1. ) <= 2.e-4 ) niter = iter;
     
     nevent=0;
     
-    //For each alignment iteration, let's define our chi^2 function of the global geometrical alignment parameters
+    //For each alignment iteration, let's define our chi^2 as a function of the global geometrical alignment parameters
     //and then try to linearize the problem:
     //    int nparam = nmodules*6; //order of parameters is x0,y0,z0,ax,ay,az
     int nparam = 0;
@@ -760,13 +765,13 @@ void GEM_align( const char *inputfilename, const char *configfilename, const cha
 	      brot( ipar_fix[i] ) += weight*( xcoeff[i+3]*(xtrack-xlocal - (xcoeff[0]*mod_x0[module]+xcoeff[1]*mod_y0[module]+xcoeff[2]*mod_z0[module])) +
 					      ycoeff[i+3]*(ytrack-ylocal - (ycoeff[0]*mod_x0[module]+ycoeff[1]*mod_y0[module]+ycoeff[2]*mod_z0[module])) );
 	    }
-	  }	
-	  
-	  if( nevent < NMAX && iter == niter ){
-	    HITMOD.push_back( HITMODTEMP );
-	    HITX.push_back( HITXTEMP );
-	    HITY.push_back( HITYTEMP );
 	  }
+	}
+	  
+	if( nevent < NMAX && iter == niter ){
+	  HITMOD.push_back( HITMODTEMP );
+	  HITX.push_back( HITXTEMP );
+	  HITY.push_back( HITYTEMP );
 	}
 
 	trackchi2_sum += trackchi2;
@@ -774,7 +779,11 @@ void GEM_align( const char *inputfilename, const char *configfilename, const cha
       }
     }
 
-    trackchi2_cut = 10.0*trackchi2_sum/ntracks_passed;
+    oldchi2cut = trackchi2_cut;
+    trackchi2_cut = 5.0*trackchi2_sum/ntracks_passed;
+
+    //If chi2 stops improving, stop iterating.
+    //if( fabs( trackchi2_cut/oldchi2cut - 1. ) <= 2.e-4 ) niter = iter; //cut short on the next iteration: 
     
     // if( offsetsonlyflag  != 0 ){
     //   for( int ipar=0; ipar<nparam; ipar++ ){
@@ -1067,12 +1076,18 @@ void GEM_align( const char *inputfilename, const char *configfilename, const cha
 	   << (mod_az[module]-prev_az[module])/mod_daz[module] << ")" << endl;
     }
   }
+
+  // cout << "NTRACKS = " << NTRACKS << ", XTRACK.size() = " << XTRACK.size()
+  //      << ", YTRACK.size() = " << YTRACK.size() << ", XPTRACK.size() = " << XPTRACK.size()
+  //      << ", YPTRACK.size() = " << YPTRACK.size() << ", TRACKNHITS.size() = " << TRACKNHITS.size()
+  //      << ", HITMOD.size() = " << HITMOD.size() << ", HITX.size() = " << HITX.size()
+  //      << ", HITY.size() = " << HITY.size() << endl;
   
-  // if( (offsetsonlyflag == 0 && rotationsonlyflag == 0) ){
+  if( (offsetsonlyflag == 0 && rotationsonlyflag == 0) ){
 
-  if( false ){
+  //if( false ){
     TMinuit *ExtraFit = new TMinuit( 6*nmodules );
-
+    
     ExtraFit->SetFCN( CHI2_FCN );
 
     int ierflg=0;
