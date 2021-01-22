@@ -9,6 +9,8 @@ void plot_GEMrun_summary(const char *filename, int nlayers=4, int nmodules=12, d
 
   gStyle->SetStatW(0.25);
   //gStyle->SetStatH(0.45);
+
+  gStyle->SetNumberContours(50);
   
   TGaxis::SetMaxDigits(3);
 
@@ -522,6 +524,8 @@ void plot_GEMrun_summary(const char *filename, int nlayers=4, int nmodules=12, d
 
     c2->cd(ilayer+1);
 
+    htemp->SetMaximum(1.0);
+    
     gPad->SetLeftMargin(lmargin);
     gPad->SetRightMargin(rmargin);
     gPad->SetBottomMargin(bmargin);
