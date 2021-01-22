@@ -34,6 +34,14 @@
 #include "TStyle.h"
 //#include "TApplication.h"
 
+//contains struct and variables needed for the new track finder function --WX
+#include "TrackFindingContainer.h"
+
+//used for time measurement for the code --WX
+#include <chrono> 
+using namespace std::chrono;
+auto totalTime = duration_cast<nanoseconds>(high_resolution_clock::now() - high_resolution_clock::now());
+
 //TODO: don't hard-code the number of APV25 samples. But for this we need a better decoded hit format anyway
 
 //Note that our definition of "X" and "Y" will differ from simprox.cpp method. What we are calling the "X" direction is the "vertical" (long) axis of the
@@ -44,9 +52,13 @@
 //The only assumption we will retain is the assumption that each module has two non-parallel strip orientations, generically denoted "U" and "V"
 //We will also make the strip pitch along each direction a configurable parameter:
 
-const int MAXNCH = 32768;
+const int MAXNCH = 60000;
 const int MAXNFADC = 100;
 const int MAXNTDC  = 100;
+
+const int TOTAL_REQUIRED_HIT = 3;
+
+int TrackingAlgorithmFlag = 0; //0 = OLD, "brute force" algorithm, 1 = NEW, "grid container" algorithm"
 
 int nstripsx = 1280;
 int nstripsy = 1024;
@@ -335,6 +347,8 @@ map<int,vector<vector<int> > > layercombos;
 
 
 vector<double> zavg_layer;
+
+vector<GridHitContainer> gridContainer;
 
 // double HitTemplateFunc( double *x, double *par ){
 //   double X = x[0];
@@ -1605,7 +1619,392 @@ int find_clusters_by_module( moduledata_t mod_data, clusterdata_t &clust_data ){
   return returnval;
 }
 
+void new_find_tracks(map<int,clusterdata_t> mod_clusters, trackdata_t &trackdata, TVector3 fcp, TVector3 bcp)
+{
+    //a new track finding algorithm for faster execution speed
+    
+    //compute the constraint slope for the track we are looking for
+    double constraintSlopeX =  (fcp.X() - bcp.X())/(fcp.Z() - bcp.Z());
+    double constraintSlopeY =  (fcp.Y() - bcp.Y())/(fcp.Z() - bcp.Z());
+    
+    //copy the hit into the new container that has grid like boxes 
+    //for faster hit search
+    for( map<int,clusterdata_t>::iterator imod=mod_clusters.begin(); imod != mod_clusters.end(); ++imod ){ 
+        int module = imod->first;
+        int layer = mod_layer[module];
+        
+        if (layer >= gridContainer.size()){
+            cout<<"no layer "<<layer<<" stored in the grid container"<<endl;
+            continue;
+        }
+        
+        if (!gridContainer[layer].HasModule(module)){
+            cout<<"grid container "<<layer<<" did not register module "<<module<<endl;
+            continue;
+        }
+        for( int iclust=0; iclust<mod_clusters[module].nclust2D; iclust++ ){
+        gridContainer[layer].AddHit(layer, module, iclust, 
+                                    mod_clusters[module].xglobal2D[iclust],
+                                    mod_clusters[module].yglobal2D[iclust],
+                                    mod_clusters[module].zglobal2D[iclust],
+                                    sigma_hitpos, sigma_hitpos); 
+        }
+        //TODO, the resolution should be more precise based on the GEM clustering
+    }
+    
+    //now we figure out what layer combination we need to look at. We only
+    //look at combination that has different end layers. In the case of choosing 
+    //at lest 4 out of 6, we have 22 different combinations, but only 6 of them 
+    //have different end layers: 03, 04, 05, 14, 15, 25.
+    
+    //when we look at configuration 05, we can allow at most two missing hits
+    //when we look at configuration 03, then there will be no missing hit allowed
+    //since it is assumed that layer 4 and 5 have no hits. Otherwise the track should 
+    //already be picked up from configuration 05
+    
+    //TODO this part should be move out of this function, appearently there is no
+    //reason to calculate this configuration for every event
+    vector<pair<int, int>> layerconfig;
+    layerconfig.clear();
+    //cout<<"size of grid container "<<gridContainer.size()<<endl;
+    for (int i = gridContainer.size(); i >= TOTAL_REQUIRED_HIT; i--){
+    
+        map<int,vector<vector<int> > >::iterator it = layercombos.find(i);
+        
+        if (it == layercombos.end()){
+            cout<<"layercombos does not contain any combo with required hit "<<i<<endl;
+            continue;
+        }
+        
+        for (unsigned int j=0; j<layercombos[i].size(); j++){
+        
+            if (layercombos[i][j].size() == 0) continue;
+            
+            int front = layercombos[i][j][0];
+            int back  = layercombos[i][j][layercombos[i][j].size() - 1];
+            assert(front < back);
+            bool exist = false;
+            
+            for (unsigned int k=0; k<layerconfig.size(); k++){
+                if (front == layerconfig[k].first && back == layerconfig[k].second)
+                exist = true;
+            }
+            
+            if (!exist) layerconfig.push_back(pair<int, int> (front, back));
+        }
+        
+    }
+    //NOTE: the above procedure should ensure that layerconfig is sorted, that is
+    //we start with configuration that can potentially give tracks with more hits
+    
+    //the container for all the recon tracks
+    vector<SBSReconTrack> allTracks;
+    allTracks.clear();
+    
+    long long int totalCombo = 1;
+    
+    for (unsigned int conf = 0; conf < layerconfig.size(); conf++){
+        int front = layerconfig[conf].first;
+        int back  = layerconfig[conf].second;
+        
+        //calculate the total number of possible combo, skip this config if 
+        //there are too many
+        totalCombo = 1;
+        for (int i=front; i<=back; i++) totalCombo *= gridContainer[i].GetTotalHit();
+        if (totalCombo > maxnhitcombinations) continue;
+        
+        //we start tracking with the front and back trackers (seed), this provides
+        //the largest leverage so that we have a good estimate for the track slope
+        //at the beginning
+        for (std::map<int, std::vector<GridHit*>>::iterator itf = gridContainer[front].hitArray.begin(); 
+             itf != gridContainer[front].hitArray.end(); ++itf){
+            for (std::map<int, std::vector<GridHit*>>::iterator itb = gridContainer[back].hitArray.begin(); 
+                 itb != gridContainer[back].hitArray.end(); ++itb){
+                int modf = itf->first;
+                int modb = itb->first;
+                
+                for (unsigned int i = 0; i<gridContainer[front].hitArray[modf].size(); i++){
+                    //pass if the hit is used
+                    if (gridContainer[front].hitArray[modf][i]->used) continue;
+                    for (unsigned int j=0; j<gridContainer[back].hitArray[modb].size(); j++){
+                        //pass if the hit is used
+                        if (gridContainer[back].hitArray[modb][j]->used) continue;
+                        
+                        int nmissinghits = gridContainer.size() - (back - front + 1);
+                        
+                        SBSReconTrack thisTrack(nmissinghits);
+                        thisTrack.AddAndFilterWithLLS(gridContainer[back].hitArray[modb][j] );
+                        thisTrack.AddAndFilterWithLLS(gridContainer[front].hitArray[modf][i]);
+                        
+                        if (fabs(thisTrack.trackPara[1] - constraintSlopeX) > TrackMaxSlopeX || 
+                            fabs(thisTrack.trackPara[3] - constraintSlopeY) > TrackMaxSlopeY) continue;
+                            
+                        //calculate the projection on the front and back constaint plane
+                        //reject if not satisfy the cuts
+                        
+                        double projx, projy;
+                        thisTrack.GetProjection(fcp.Z(), projx, projy);
+                        
+                        if (fabs(projx - fcp.X()) > TrackProjPosCut[0] || fabs(projy - fcp.Y()) > TrackProjPosCut[1])
+                        continue;
+                        
+                        thisTrack.GetProjection(bcp.Z(), projx, projy);
+                        
+                        if (fabs(projx - bcp.X()) > TrackProjPosCut[0] || fabs(projy - bcp.Y()) > TrackProjPosCut[1])
+                        continue;
+                        
+                        //now if the pair passed the selection rules, we will construct a seed
+                        
+                        vector<SBSReconTrack> tracksystem;
+                        tracksystem.push_back(thisTrack);
+                        
+                        //and then we use the middle layers to build the track
+                        
+                        assert(back - front > 1); //at lest one middle layer in between
+                        for (int mid = front + 1; mid < back; mid++){
+                            int ntrack = tracksystem.size();
+                            for (unsigned int itrack = 0; itrack < ntrack; itrack++){
+                                
+                                if (!tracksystem[itrack].status) continue;
+                                
+                                map<int, vector<vector<GridHit*>*> > hitinrange;
+                                int nhitsInRange = 0;
+                                
+                                for (std::map<int, std::vector<GridHit*>>::iterator itm = gridContainer[mid].hitArray.begin(); 
+                                     itm != gridContainer[mid].hitArray.end(); ++itm){
+                                     
+                                     int modm = itm->first;
+                                     double projx, projy;
+                                     
+                                     tracksystem[itrack].GetProjection(mod_z0[modm], projx, projy);
+                                     
+                                     int nhitsInMod = 0;
+                                     hitinrange[modm] = gridContainer[mid].GetHitInRange(projx, projy, 
+                                                        TrackFindingMaxRadius, modm, nhitsInMod);
+                                     
+                                     nhitsInRange += nhitsInMod;
+                                }
+                                
+                                if (nhitsInRange == 0){
+                                    //no hits found within the range
+                                    tracksystem[itrack].nmissinghits++;
+                                }
+                                else{
+                                    //hits found in the range, for the first hit
+                                    //add it to the original track, there there is more 
+                                    //than one hit, make a copy of the track and add it to the 
+                                    //new track
+                                    bool noHitFound = true;
+                                    SBSReconTrack tmpTrack(&tracksystem[itrack]);
+                                    map<int, vector<vector<GridHit*>*> >::iterator ii = hitinrange.begin();
+                                    for (; ii != hitinrange.end(); ++ii){
+                                        int thisMod = ii->first;
+                                        for (unsigned int jj=0; jj<hitinrange[thisMod].size(); jj++){
+                                            for (unsigned int kk=0; kk<hitinrange[thisMod][jj]->size(); kk++){
+                                                if ((hitinrange[thisMod][jj]->at(kk))->used) continue;
+                                                
+                                                double projx, projy;
+                                                tmpTrack.GetProjection((hitinrange[thisMod][jj]->at(kk))->z, projx, projy);
+                                                double dist = sqrt(pow(projx - (hitinrange[thisMod][jj]->at(kk))->x, 2) 
+                                                                 + pow(projy - (hitinrange[thisMod][jj]->at(kk))->y, 2));
+                                                
+                                                if (dist > TrackFindingMaxRadius) continue;
+                                                
+                                                double dz = hitinrange[thisMod][jj]->at(kk)->z - tmpTrack.hits.back()->z;
+                                                assert(dz > 0);
+                                                double tmpSlopeX = (hitinrange[thisMod][jj]->at(kk)->x - tmpTrack.hits.back()->x)/dz;
+                                                double tmpSlopeY = (hitinrange[thisMod][jj]->at(kk)->y - tmpTrack.hits.back()->y)/dz;
+                                                
+                                                if (fabs(tmpSlopeX - constraintSlopeX) > TrackMaxSlopeX || 
+                                                    fabs(tmpSlopeY - constraintSlopeY) > TrackMaxSlopeY) continue;
+                                                
+                                                if (noHitFound) {
+                                                    tracksystem[itrack].AddAndFilterWithLLS(hitinrange[thisMod][jj]->at(kk));
+                                                    noHitFound = false;
+                                                    
+                                                }
+                                                else{
+                                                    //made a copy of the track first
+                                                    tracksystem.push_back(tmpTrack);
+                                                    tracksystem[tracksystem.size() - 1].AddAndFilterWithLLS(hitinrange[thisMod][jj]->at(kk));
+                                                }
+                                            }
+                                        }
+                                    }
+                                    if (noHitFound) tracksystem[itrack].nmissinghits++;
+                                    else{
+                                        //even if there is hit found we still consider no hit found as one possiblity
+                                        tracksystem.push_back(tmpTrack);
+                                        tracksystem[tracksystem.size() - 1].nmissinghits++;
+                                    }
+                                }
+                            }
+                            //examine all track status before moving towards the next plane
+                            for (unsigned int itrack = 0; itrack < tracksystem.size(); itrack++){
+                                if (!tracksystem[itrack].status) continue;
+                                if (tracksystem[itrack].nmissinghits > gridContainer.size() - TOTAL_REQUIRED_HIT )
+                                tracksystem[itrack].status = false; 
+                            }
+                        }
+                        
+                        //finish track following with the middle layers, now we check if 
+                        //the tracks are good
+                        for (unsigned int itrack = 0; itrack < tracksystem.size(); itrack++){
+                            //check minimum hit requirement
+                            if (tracksystem[itrack].nmissinghits > gridContainer.size() - TOTAL_REQUIRED_HIT ){
+                                tracksystem[itrack].status = false; 
+                                continue;
+                            }
+                            //check track slope, can use smaller cuts after fitting all hits
+                            if (fabs(tracksystem[itrack].trackPara[1] - constraintSlopeX) > FineTrackMaxSlope[0] || 
+                                fabs(tracksystem[itrack].trackPara[3] - constraintSlopeY) > FineTrackMaxSlope[1]){
+                                tracksystem[itrack].status = false;
+                                continue;
+                            }
+                            //check projection, can use smaller cuts after fitting all hits
+                            double projx, projy;         
+                            tracksystem[itrack].GetProjection(fcp.Z(), projx, projy);
+                            if (fabs(projx - fcp.X()) > FineTrackProjPosCut[0] || fabs(projy - fcp.Y()) > FineTrackProjPosCut[1]){
+                                tracksystem[itrack].status = false;
+                                continue;
+                            }
+                            tracksystem[itrack].GetProjection(bcp.Z(), projx, projy);
+                            if (fabs(projx - bcp.X()) > FineTrackProjPosCut[0] || fabs(projy - bcp.Y()) > FineTrackProjPosCut[1]){
+                                tracksystem[itrack].status = false;
+                                continue;
+                            }
+                            
+                            std::sort(tracksystem[itrack].hits.begin(), tracksystem[itrack].hits.end(), SortHits);
+                            tracksystem[itrack].CheckOutlier(TrackFindingMaxRadius);
+                            if (tracksystem[itrack].nmissinghits > gridContainer.size() - TOTAL_REQUIRED_HIT ){
+                                tracksystem[itrack].status = false; 
+                                continue;
+                            }
+                            
+                            if (tracksystem[itrack].ForwardSearchTest(TrackFindingMaxRadius)){
+                                tracksystem[itrack].status = false; 
+                                continue;
+                            }
+                            
+                            //if the track passed above cuts, calculate chi2/ndf
+                            //this is a rather simplified chi2 calculation (assume xy readout and no rotation)
+                            //let's use the calculation in the original standalone code
+                            //tracksystem[itrack].CalChi2NDF();
+                            
+                            //the original calculation
+                            int ndf = 2*tracksystem[itrack].hits.size()-4;
+                            double chi2 = 0.;
+                            for (unsigned int ihit = 0; ihit < tracksystem[itrack].hits.size(); ihit++){
+                                int module = tracksystem[itrack].hits[ihit]->module;
+                                int iclust = tracksystem[itrack].hits[ihit]->index;
+                                
+                                double zhittemp = mod_clusters[module].zglobal2D[iclust]; 
+		                        double uhittemp = mod_clusters[module].xclust2Dcorr[iclust];
+		                        double vhittemp = mod_clusters[module].yclust2Dcorr[iclust];
 
+		                        TVector3 trackpos_global( tracksystem[itrack].trackPara[0]+tracksystem[itrack].trackPara[1]*zhittemp, 
+		                                                  tracksystem[itrack].trackPara[2]+tracksystem[itrack].trackPara[3]*zhittemp, 
+		                                                  zhittemp );
+		                        TVector3 modcenter_global( mod_x0[module], mod_y0[module], mod_z0[module] );
+		                       
+		                        
+		                        TVector3 trackpos_local = mod_Rotinv[module]*(trackpos_global - modcenter_global);
+
+		                        //Compute the local "u" and "v" coordinates of the track within the module, to allow for the
+		                        //possibility of different strip orientations than X/Y:
+		                        double utracktemp = trackpos_local.X()*mod_Pxu[module] + trackpos_local.Y()*mod_Pyu[module];
+		                        double vtracktemp = trackpos_local.X()*mod_Pxv[module] + trackpos_local.Y()*mod_Pyv[module];
+		                        
+		                        chi2 += pow( (uhittemp-utracktemp)/sigma_hitpos, 2 ) + pow( (vhittemp - vtracktemp)/sigma_hitpos, 2 );
+                            }
+                            tracksystem[itrack].chi2ndf = chi2/ndf;
+                            
+                            if (tracksystem[itrack].chi2ndf > TrackChi2Cut) tracksystem[itrack].status = false;
+                        }
+                        
+                        //save the track into the track container of the event and set all its hits as used
+                        for (unsigned int itrack = 0; itrack < tracksystem.size(); itrack++){
+                            if (tracksystem[itrack].status)
+                            allTracks.push_back(tracksystem[itrack]);
+                        }
+                        
+                    }
+                }
+            }
+        }
+    }
+
+    //finished track finding, now we save the tracks into output container
+    std::sort(allTracks.begin(), allTracks.end(), SortTracks);
+    
+    map<int, vector<GridHit*>> goodHits;
+    
+    for (unsigned int i=0; i<allTracks.size(); i++){
+        
+        bool flag = false;
+        for (unsigned int j=0; j<allTracks[i].hits.size(); j++){
+            map< int, vector<GridHit*> >::iterator it = goodHits.find(allTracks[i].hits[j]->layer);
+            if (it != goodHits.end()){
+                for (UInt_t n = 0; n<(it->second).size(); n++){
+                    if ((allTracks[i].hits[j]->layer  == ((it->second).at(n))->layer ) &&
+                        (allTracks[i].hits[j]->module == ((it->second).at(n))->module) &&
+                        (allTracks[i].hits[j]->index  == ((it->second).at(n))->index )) { flag = true; }
+                }
+            }
+        }
+        if (flag) continue;
+        
+        
+        vector<int> modlisttemp,hitlisttemp;
+	    vector<double> residxtemp,residytemp;
+
+	    for (unsigned int j=0; j<allTracks[i].hits.size(); j++){
+	        
+	        goodHits[allTracks[i].hits[j]->layer].push_back(allTracks[i].hits[j]);
+	        
+	        modlisttemp.push_back(allTracks[i].hits[j]->module);
+	        hitlisttemp.push_back(allTracks[i].hits[j]->index);
+	        
+	        //TODO: really shouldn't perform the same calculation twice here
+            double zhittemp = mod_clusters[modlisttemp.back()].zglobal2D[hitlisttemp.back()];
+            double uhittemp = mod_clusters[modlisttemp.back()].xclust2Dcorr[hitlisttemp.back()];
+            double vhittemp = mod_clusters[modlisttemp.back()].yclust2Dcorr[hitlisttemp.back()];
+
+            TVector3 trackpos_global( allTracks[i].trackPara[0]+allTracks[i].trackPara[1]*zhittemp, 
+                                      allTracks[i].trackPara[2]+allTracks[i].trackPara[3]*zhittemp, 
+                                      zhittemp );
+            TVector3 modcenter_global( mod_x0[modlisttemp.back()], mod_y0[modlisttemp.back()], mod_z0[modlisttemp.back()] );
+           
+            
+            TVector3 trackpos_local = mod_Rotinv[modlisttemp.back()]*(trackpos_global - modcenter_global);
+
+            //Compute the local "u" and "v" coordinates of the track within the module, to allow for the
+            //possibility of different strip orientations than X/Y:
+            double utracktemp = trackpos_local.X()*mod_Pxu[modlisttemp.back()] + trackpos_local.Y()*mod_Pyu[modlisttemp.back()];
+            double vtracktemp = trackpos_local.X()*mod_Pxv[modlisttemp.back()] + trackpos_local.Y()*mod_Pyv[modlisttemp.back()];
+            
+            residxtemp.push_back(uhittemp - utracktemp);
+		    residytemp.push_back(vhittemp - vtracktemp);
+	    }
+	    
+	    trackdata.nhitsontrack.push_back( allTracks[i].hits.size() );
+	    trackdata.modlist_track.push_back( modlisttemp );
+	    trackdata.hitlist_track.push_back( hitlisttemp );
+	    trackdata.residx_hits.push_back( residxtemp );
+	    trackdata.residy_hits.push_back( residytemp );
+	    trackdata.eresidx_hits.push_back( residxtemp );
+	    trackdata.eresidy_hits.push_back( residytemp );
+	    
+	    trackdata.Xtrack.push_back( allTracks[i].trackPara[0] );
+	    trackdata.Xptrack.push_back( allTracks[i].trackPara[1] );
+	    trackdata.Ytrack.push_back( allTracks[i].trackPara[2] );
+	    trackdata.Yptrack.push_back( allTracks[i].trackPara[3] );
+	    
+	    trackdata.Chi2NDFtrack.push_back( allTracks[i].chi2ndf );
+	    
+	    trackdata.ntracks++;
+    }
+}
 
 void find_tracks( map<int,clusterdata_t> mod_clusters, trackdata_t &trackdata ){
   //only attempt tracking if we have at least three layers with at least one 2D matched hit passing the XY and T correlation cuts:
@@ -1654,7 +2053,7 @@ void find_tracks( map<int,clusterdata_t> mod_clusters, trackdata_t &trackdata ){
     }
   }
 
-  if( layers_2Dmatch.size() >= 3 ){
+  if( layers_2Dmatch.size() >= TOTAL_REQUIRED_HIT ){
     //trackdata_t trackdatatemp;
 
     trackdata.ntracks = 0;
@@ -1668,7 +2067,7 @@ void find_tracks( map<int,clusterdata_t> mod_clusters, trackdata_t &trackdata ){
 
       int nhitsrequired=layers_2Dmatch.size(); //on first iteration, require nhits = total number of layers with unused hits:
 
-      while( nhitsrequired >= 3 ){ //first iteration: determine number of layers with (unused) hits, populate lists of unused hits, count number of combinations,
+      while( nhitsrequired >= TOTAL_REQUIRED_HIT ){ //first iteration: determine number of layers with (unused) hits, populate lists of unused hits, count number of combinations,
 	//etc:
 	
 	foundtrack = false;
@@ -2147,7 +2546,7 @@ int get_nearest_module( trackdata_t trdata, int ilayer, int itrack=0 ){
 }
 
 void GEM_reconstruct( const char *filename, const char *configfilename, const char *outfilename="temp.root" ){
-
+  auto program_start = high_resolution_clock::now(); //starting time of the program --WX
   //Initialize walk correction parameters:
   double walkcor_mean_params[3] = {walkcor_mean_const, walkcor_mean_ADC0, walkcor_mean_exp};
   double walkcor_sigma_params[3] = {walkcor_sigma_const, walkcor_sigma_ADC0, walkcor_mean_exp};
@@ -2192,6 +2591,11 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
 	if( ntokens >= 2 ){
 	  TString skey = ( (TObjString*) (*tokens)[0] )->GetString();
 
+	  if( skey == "TrackingAlgorithm" ){
+	    TString stemp = ( (TObjString*) (*tokens)[1] )->GetString();
+	    TrackingAlgorithmFlag = stemp.Atoi();
+	  }
+	  
 	  if( skey == "reusestripsflag" ){ //flag to allow reuse of strips in multiple 2D clusters:
 	    TString stemp = ( (TObjString*) (*tokens)[1] )->GetString();
 	    reusestripsflag = stemp.Atoi();
@@ -2558,6 +2962,7 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
 	  }
 	      
 	}
+	tokens->Delete();
       }
     }
   }
@@ -2568,17 +2973,23 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
   // PulseShape->SetParLimits(0,0.0,1.e5);
   // // PulseShape->SetParLimits(2,0.0, 300.0);
 
+   //initialize the grid hit container here -- WX
+  gridContainer.clear();
   
   zavg_layer.resize(nlayers);
   int nmod_layer[nlayers];
   for( int ilayer=0; ilayer<nlayers; ilayer++ ){
     nmod_layer[ilayer] = 0;
     zavg_layer[ilayer] = 0.0;
+    gridContainer.push_back(GridHitContainer(ilayer));
   }
   for( int imod=0; imod<nmodules; imod++ ){
     int layer = mod_layer[imod];
     nmod_layer[layer]++;
     zavg_layer[layer] += mod_z0[imod];
+    for (unsigned int j=0; j<gridContainer.size(); j++){
+        if (gridContainer[j].layer == layer) gridContainer[j].AddModule(imod);
+    }
   }
   for( int ilayer=0; ilayer<nlayers; ilayer++ ){
     zavg_layer[ilayer] /= double(nmod_layer[ilayer]);
@@ -2602,7 +3013,7 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
       }
     }
 
-    if( nlayersoncombo >= 3 ){
+    if( nlayersoncombo >= TOTAL_REQUIRED_HIT ){
       layercombos[nlayersoncombo].push_back( layercombo );
     }
   }
@@ -2618,6 +3029,9 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
   //  int TrackLayers[nlayers];
   double CALOsum;
   int NGOODSCINT;
+  int EventID;
+  //int NstripX[nmodules];
+  //int NstripY[nmodules];
   
   int Nclustperlayer[nlayers];
   
@@ -2647,6 +3061,7 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
   int HitNstripX[nlayers];
   int HitNstripY[nlayers];
 
+  Tout->Branch("EventID",&EventID,"EventID/I");
   Tout->Branch("Ntracks",&Ntracks,"Ntracks/I");
   Tout->Branch("CALOsum",&CALOsum,"CALOsum/D");
   Tout->Branch("NGOODSCINT", &NGOODSCINT, "NGOODSCINT/I");
@@ -2817,7 +3232,7 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
   C->SetBranchAddress("adc4",adc4);
   C->SetBranchAddress("adc5",adc5);
   
-  if( DataFormat == "INFN" || DataFormat == "HALLA" ){
+  if( DataFormat == "INFN" || DataFormat == "HALLA" || DataFormat == "GEP_MC"){
     C->SetBranchAddress("detID",moduleID);
     C->SetBranchAddress("planeID",axis);
     //No layer ID for INFN or Hall A data
@@ -3156,6 +3571,8 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
   while( C->GetEntry(nevent++) && (NMAX < 0 || nevent < NMAX ) ){
     if( nevent % 1000 == 0 ) cout << nevent << endl;
 
+    EventID = evtID;
+    
     //cout << "Processing event " << nevent << endl;
     
     //Clustering and hit reconstruction:
@@ -3265,6 +3682,30 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
 
     map<int,int> mod_maxstripY;
     map<int,double> mod_ADCmaxY;
+    
+    //determine the search region on each plane, 
+    //for GEP we have two contraint points, for general purposes we might not 
+    //have such contraints. so just set the search center to the center of the chamber
+    //and size to be something larger than the size of the chamber --WX
+    search_mod.clear();
+    search_x.clear();
+    search_y.clear();
+    
+    for (unsigned int i=0; i<gridContainer.size(); i++) gridContainer[i].Clear();
+    
+    for (int k=0; k<nmodules; k++){
+        
+        search_mod.push_back(k);
+        search_x.push_back(mod_x0[k]);
+        search_y.push_back(mod_y0[k]);
+        
+        for (unsigned int i=0; i<gridContainer.size(); i++){
+            if (gridContainer[i].HasModule(k)){
+                //slightly larger than the actual serach region just in case some numerical issue -- WX
+                gridContainer[i].SetGeoInfo(k, search_x.back(), search_y.back(), mod_Lx[k]*1.01, mod_Ly[k]*1.01);
+            }
+        }
+    }
     
     for( int ich=0; ich<nch; ich++ ){
       int strip = Strip[ich];
@@ -3518,7 +3959,7 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
       hNstripsY_layer->Fill( NstripY_layer[ilay],ilay );
     }
     
-    if( layers_hitXY.size() >= 3 ){ //enough layers hit to (possibly) form a track: only bother with clustering and attempted track finding if this is the case: 
+    if( layers_hitXY.size() >= TOTAL_REQUIRED_HIT ){ //enough layers hit to (possibly) form a track: only bother with clustering and attempted track finding if this is the case: 
 
       if( eventdisplaymode != 0 ){
 	for( int ilayer=0; ilayer<nlayers; ilayer++ ){
@@ -3708,11 +4149,22 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
 
       //      cout << "Finding tracks, event..." << evtID << endl;
 
-      if( nlayers_with_2Dclust >= 3 ){
+      if( nlayers_with_2Dclust >= TOTAL_REQUIRED_HIT ){
 
 	//	cout << "Finding tracks, event... " << evtID << endl;
 	
-	find_tracks( mod_clusters, tracktemp );
+	auto start = high_resolution_clock::now();
+	//define the forward and backward constraint points
+	TVector3 fcp(0, 0, zavg_layer[0] - 10);
+	TVector3 bkp(0, 0, zavg_layer[nlayers-1] + 10);
+
+	if( TrackingAlgorithmFlag != 0 ){
+	  new_find_tracks( mod_clusters, tracktemp, fcp, bkp);
+	} else {
+	  find_tracks( mod_clusters, tracktemp );
+	}
+	auto end = high_resolution_clock::now();
+	totalTime += duration_cast<nanoseconds>(end - start);
 	
 	//cout << "track finding successful..." << endl;
 	
@@ -3888,7 +4340,7 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
 	      tracktemp.eresidx_hits[itrack][ihit] = uhittemp - utracktemp;
 	      tracktemp.eresidy_hits[itrack][ihit] = vhittemp - vtracktemp;
 
-	      hTrackXeresid_vs_layer->Fill( layer, utracktemp - uhittemp );
+	      hTrackXeresid_vs_layer->Fill( layer, utracktemp - uhittemp ); //resid = utrack - uhit --> uhit = utrack - resid
 	      hTrackYeresid_vs_layer->Fill( layer, vtracktemp - vhittemp );
 
 	      hTrackXeresid_vs_module->Fill( module, utracktemp - uhittemp );
@@ -4488,7 +4940,15 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
   
   fout->Write();
   
+  auto program_end = high_resolution_clock::now();
   
+  cout<<"total time spent in tracking: "<<(double)totalTime.count() / 1e9<<" seconds "<<endl;
+  
+  auto program_time = duration_cast<nanoseconds>(program_end - program_start); 
+  
+  cout<<"total program execution time: "<<(double)program_time.count() / 1e9<<" seconds" <<endl;
+  
+  cout<<"fraction of time spent in track-finding: "<<((double)totalTime.count()/(double)program_time.count())<<endl;
 }
 
 

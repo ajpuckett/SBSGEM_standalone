@@ -1,0 +1,54 @@
+dataformat GEP_MC
+nlayers 6
+nmodules 18
+mod_layer 0 0 0 1 1 1 2 2 2 3 3 3 4 4 4 5 5 5
+# X, Y, and Z offsets are given in mm:
+# Original offsets:
+#mod_x0 -512 0 512 -512 0 512 -512 0 512 -512 0 512 -512 0 512 -512 0 512  
+#mod_y0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+mod_x0 -512.2 -0.2 511.8 -512.2 -0.2 511.8 -512.2 -0.2 511.8 -512.2 -0.2 511.8 -512.2 -0.2 511.8 -512.2 -0.2 511.8 
+mod_y0 -0.2 -0.2 -0.2 -0.2 -0.2 -0.2 -0.2 -0.2 -0.2 -0.2 -0.2 -0.2 -0.2 -0.2 -0.2 -0.2 -0.2 -0.2 
+mod_z0 1835.51 1835.51 1835.51 1925.51 1925.51 1925.51 2015.51 2015.51 2015.51 2105.51 2105.51 2105.51 2195.51 2195.51 2195.51 2285.51 2285.51 2285.51 
+mod_ax 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+mod_ay 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+mod_az 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+# going forward, more of the module geometry is configurable: "u" = X and "v" = Y
+mod_nstripsu  1280 1280 1280 1280 1280 1280 1280 1280 1280 1280 1280 1280 1280 1280 1280 1280 1280 1280
+mod_nstripsv  1024 1024 1024 1024 1024 1024 1024 1024 1024 1024 1024 1024 1024 1024 1024 1024 1024 1024
+# for the "u = X, v = Y" convention, the planeID = 1, 0, for u, v
+mod_uplaneID 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1
+mod_vplaneID 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+mod_ustrip_pitch 0.4 0.4 0.4 0.4 0.4 0.4 0.4 0.4 0.4 0.4 0.4 0.4 0.4 0.4 0.4 0.4 0.4 0.4
+mod_vstrip_pitch 0.4 0.4 0.4 0.4 0.4 0.4 0.4 0.4 0.4 0.4 0.4 0.4 0.4 0.4 0.4 0.4 0.4 0.4
+mod_Lx 512.0 512.0 512.0 512.0 512.0 512.0 512.0 512.0 512.0 512.0 512.0 512.0 512.0 512.0 512.0 512.0 512.0 512.0
+mod_Ly 410.0 410.0 410.0 410.0 410.0 410.0 410.0 410.0 410.0 410.0 410.0 410.0 410.0 410.0 410.0 410.0 410.0 410.0
+# u strip angle relative to X axis: under u = X, v = Y convention, uangle = 0 and vangle=90
+mod_uangle 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0 0.0
+# Setting the "V" strip angle to -90 degrees amounts to reversing the direction of the Y axis (I hope):
+mod_vangle 90.0 90.0 90.0 90.0 90.0 90.0 90.0 90.0 90.0 90.0 90.0 90.0 90.0 90.0 90.0 90.0 90.0 90.0 
+eventdisplay 0
+clustersigma 0.4
+clustertau 54.0
+varyclustersigma 0
+varyclustertau 0
+maxstripsperclusterX 15
+maxstripsperclusterY 15
+# thresholds for "pruning" strips and clusters (not necessarily discarding):
+maxcor_threshold  -1.1
+stripcor_threshold -1.1
+clustcor_threshold -1.1
+clust2D_ADCasymcut 1.1
+clust2D_dTcut 1000.0
+threshold_maxsample 0.0
+threshold_stripsum 240.0
+threshold_clustersum 0.0
+#threshold_maxsample 0.0
+#threshold_stripsum  300.0
+#threshold_clustersum 300.0
+trackchi2cut 1000.0
+trackmaxradius 2.0 # mm, max radial separation between hit and projection of track from previous layers to add hit to track.
+trackmaxslopeX 1
+trackmaxslopeY 1
+maxADCXYthreshold 5000.0
+tstripcut_nsigma 5.0
+edconfig

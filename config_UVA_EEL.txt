@@ -76,4 +76,5 @@ trackmaxslopeY 1.0
 tstripcut_nsigma 10000.0
 #NMAX 100000000
 NMAX 200000
+TrackingAlgorithm 1
 endconfig
