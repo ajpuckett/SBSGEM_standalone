@@ -76,8 +76,8 @@ int maxnstripspercluster=7;
 int maxnstripXpercluster=9;
 int maxnstripYpercluster=7;
 
-int maxneighborsX=4; //+/-4 around local maximum:
-int maxneighborsY=3; //+/-3 around local maximum:
+int maxneighborsX=5; //+/-4 around local maximum:
+int maxneighborsY=5; //+/-3 around local maximum:
 
 //double clustersigma=0.4; //mm
 //double clustertau=50.0; //ns
@@ -2494,6 +2494,28 @@ void find_tracks( map<int,clusterdata_t> mod_clusters, trackdata_t &trackdata ){
 	    trackdata.Yptrack.push_back( BestTrack[3] );
 	    
 	    trackdata.Chi2NDFtrack.push_back( bestchi2 );
+
+	    //Experimental: eliminate all other hits containing either the same X maximum or same Y maximum as a hit already used in a track.
+	    // for( int ihittemp=0; ihittemp<hitlisttemp.size(); ihittemp++ ){
+	    //   int modtemp = modlisttemp[ihittemp];
+	    //   int iclusttemp = hitlisttemp[ihittemp]; //position in 2D cluster array:
+	    //   int ixtemp = mod_clusters[modtemp].ixclust2D[iclusttemp];
+	    //   int iytemp = mod_clusters[modtemp].iyclust2D[iclusttemp];
+	    //   int layertemp = mod_layer[modtemp];
+
+	    //   for( int jhittemp=0; jhittemp<N2Dhits_layer[layertemp]; jhittemp++ ){
+	    // 	int modj = modindexhit2D[layertemp][jhittemp];
+	    // 	int clustj = clustindexhit2D[layertemp][jhittemp];
+	    // 	if( modj == modtemp ){
+	    // 	  int ixj = mod_clusters[modj].ixclust2D[clustj];
+	    // 	  int iyj = mod_clusters[modj].iyclust2D[clustj];
+	    // 	  if( ixj == ixtemp || iyj == iytemp ){
+	    // 	    hitused2D[layertemp][jhittemp] = true;
+	    // 	  }
+	    // 	}
+	    //   }
+	      
+	    // }
 	    
 	    trackdata.ntracks++;
 	  }
@@ -2503,6 +2525,9 @@ void find_tracks( map<int,clusterdata_t> mod_clusters, trackdata_t &trackdata ){
 
 	//if we fail to find a track at the current hit requirement; we reduce the number of hits required:
 	//If the number of hits required falls below 3, we exit the loop:
+
+	
+	
 	if( !foundtrack ) nhitsrequired--;
 	
       } //while( nhitsrequired >= 3 )
@@ -2591,6 +2616,23 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
 	if( ntokens >= 2 ){
 	  TString skey = ( (TObjString*) (*tokens)[0] )->GetString();
 
+	  if( skey == "maxneighborsx" ){
+	    TString stemp = ( (TObjString*) (*tokens)[1] )->GetString();
+	    //maxnhitcombinations = stemp.Atoi();
+	    maxneighborsX = stemp.Atoi();
+	  }
+
+	   if( skey == "maxneighborsy" ){
+	    TString stemp = ( (TObjString*) (*tokens)[1] )->GetString();
+	    //maxnhitcombinations = stemp.Atoi();
+	    maxneighborsY = stemp.Atoi();
+	   }
+	  
+	  if( skey == "maxhitcombos" ){
+	    TString stemp = ( (TObjString*) (*tokens)[1] )->GetString();
+	    maxnhitcombinations = stemp.Atoi();
+	  }
+	  
 	  if( skey == "TrackingAlgorithm" ){
 	    TString stemp = ( (TObjString*) (*tokens)[1] )->GetString();
 	    TrackingAlgorithmFlag = stemp.Atoi();

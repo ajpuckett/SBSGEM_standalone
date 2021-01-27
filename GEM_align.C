@@ -143,6 +143,8 @@ void GEM_align( const char *inputfilename, const char *configfilename, const cha
   int fixax=0, fixay=0, fixaz=0;
 
   double sigma_hitpos=0.14; //mm
+
+  double minchi2change = 2.e-4;
   
   //Copied from GEM_reconstruct: For this routine we are only interested in the number of layers and the number of modules, and the geometrical information:
   if( configfile ){
@@ -157,6 +159,11 @@ void GEM_align( const char *inputfilename, const char *configfilename, const cha
 	if( ntokens >= 2 ){
 	  TString skey = ( (TObjString*) (*tokens)[0] )->GetString();
 
+	  if( skey == "minchi2change" ){
+	    TString stemp = ( (TObjString*) (*tokens)[1] )->GetString();
+	    minchi2change = stemp.Atof();
+	  }
+	  
 	  if( skey == "niter" ){
 	    TString sniter =  ( (TObjString*) (*tokens)[1] )->GetString();
 	    niter = sniter.Atoi();
@@ -442,7 +449,7 @@ void GEM_align( const char *inputfilename, const char *configfilename, const cha
 
     //at beginning of each iteration check:
     //if this is not the first iteration, cut short if chi2 stops improving:
-    if( iter > 0 && fabs( trackchi2_cut/oldchi2cut - 1. ) <= 2.e-4 ) niter = iter;
+    if( iter > 0 && fabs( trackchi2_cut/oldchi2cut - 1. ) <= minchi2change ) niter = iter;
     
     nevent=0;
     
@@ -780,8 +787,10 @@ void GEM_align( const char *inputfilename, const char *configfilename, const cha
     }
 
     oldchi2cut = trackchi2_cut;
-    trackchi2_cut = 5.0*trackchi2_sum/ntracks_passed;
+    trackchi2_cut = 3.0*trackchi2_sum/ntracks_passed;
 
+    cout << endl << "Number of tracks passing chi2 cut = " << ntracks_passed << endl << endl;
+    
     //If chi2 stops improving, stop iterating.
     //if( fabs( trackchi2_cut/oldchi2cut - 1. ) <= 2.e-4 ) niter = iter; //cut short on the next iteration: 
     
