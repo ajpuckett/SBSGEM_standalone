@@ -2545,7 +2545,13 @@ int get_nearest_module( trackdata_t trdata, int ilayer, int itrack=0 ){
   return bestmod; 
 }
 
-void GEM_reconstruct( const char *filename, const char *configfilename, const char *outfilename="temp.root" ){
+void event_display(){
+
+  const char *filename = "~/outputDir/hitDir/gem_hit_2812_00.root";
+  const char *configfilename = "./configs/config_UVA_EEL_5layer_2nd_set.txt";
+  const TString outfilename = "2812_event_display";
+  int nevents_save = 100;
+
   auto program_start = high_resolution_clock::now(); //starting time of the program --WX
   //Initialize walk correction parameters:
   double walkcor_mean_params[3] = {walkcor_mean_const, walkcor_mean_ADC0, walkcor_mean_exp};
@@ -2558,9 +2564,6 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
   
   gStyle->SetOptStat(0);
   
-  TFile *fout = new TFile(outfilename,"RECREATE");
-
-  TTree *Tout = new TTree("Tout","INFN GEM 4-layer cosmic tracks");
 
   //What branches do we need in our ROOT tree?
   //We need the "local" and "global" hit positions of hits on tracks
@@ -2778,7 +2781,8 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
 	  if( skey == "eventdisplay" && ntokens >= 2 ){
 	    TString sevdisplay = ( (TObjString*) (*tokens)[1] )->GetString();
 
-	    eventdisplaymode = sevdisplay.Atoi();
+	    //eventdisplaymode = sevdisplay.Atoi();
+	    eventdisplaymode = 1;
 	  }
 
 	  // if( skey == "varyclustersigma" && ntokens >= 2 ){
@@ -2934,29 +2938,6 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
 	  if( skey == "clustmap_fname" && ntokens >= 2 ){
 	    TString stemp = ( (TObjString*) (*tokens)[1] )->GetString();
 
-	    TFile *ftemp = new TFile(stemp,"READ");
-
-	    TH2D *hXtemp;
-	    TH2D *hYtemp;
-	    
-	    ftemp->GetObject( "hClust2D_Xmom_int_vs_NstripX", hXtemp );
-	    ftemp->GetObject( "hClust2D_Ymom_int_vs_NstripY", hYtemp );
-
-	    fout->cd();
-	    
-	    hXmom_int = new TH2D( *hXtemp );
-	    hYmom_int = new TH2D( *hYtemp );	    
-	    
-	    hXmom_int->Print();
-	    hYmom_int->Print();
-	    
-	    ftemp->Close();
-	    ftemp->Delete();
-
-	    cout << "closed hit map file" << endl;
-
-	    hXmom_int->Print();
-	    hYmom_int->Print();
 	    
 	    usehitmaps=true;
 	  }
@@ -2967,11 +2948,6 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
     }
   }
 
-  // //PulseShape->FixParameter(2,tau_pulseshape);
-  // PulseShape->SetParameter(2,tau_pulseshape);
-  // //PulseShape->SetParLimits(1,-150,150);
-  // PulseShape->SetParLimits(0,0.0,1.e5);
-  // // PulseShape->SetParLimits(2,0.0, 300.0);
 
    //initialize the grid hit container here -- WX
   gridContainer.clear();
@@ -3033,70 +3009,6 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
   //int NstripX[nmodules];
   //int NstripY[nmodules];
   
-  int Nclustperlayer[nlayers];
-  
-  int HitModule[nlayers];
-  int HitLayer[nlayers];
-  
-  double HitXlocal[nlayers];
-  double HitYlocal[nlayers];
-  double HitXglobal[nlayers];
-  double HitYglobal[nlayers];
-  double HitZglobal[nlayers];
-  double HitXresid[nlayers];
-  double HitYresid[nlayers];
-  double HitXresidE[nlayers];
-  double HitYresidE[nlayers];
-  double HitSigX[nlayers]; 
-  double HitSigY[nlayers];
-  double HitXmom[nlayers];
-  double HitYmom[nlayers];
-  double HitADCX[nlayers]; 
-  double HitADCY[nlayers];
-  double HitADCasym[nlayers];
-  double HitTmean[nlayers];
-  double HitdT[nlayers];
-  double HitCorrCoeff[nlayers];
-  double StripMaxCorrCoeff[nlayers];
-  int HitNstripX[nlayers];
-  int HitNstripY[nlayers];
-
-  Tout->Branch("EventID",&EventID,"EventID/I");
-  Tout->Branch("Ntracks",&Ntracks,"Ntracks/I");
-  Tout->Branch("CALOsum",&CALOsum,"CALOsum/D");
-  Tout->Branch("NGOODSCINT", &NGOODSCINT, "NGOODSCINT/I");
-  Tout->Branch("TrackXp",&TrackXp,"TrackXp/D");
-  Tout->Branch("TrackYp",&TrackYp,"TrackYp/D");
-  Tout->Branch("TrackX",&TrackX,"TrackX/D");
-  Tout->Branch("TrackY",&TrackY,"TrackY/D");
-  Tout->Branch("TrackChi2NDF",&TrackChi2NDF,"TrackChi2NDF/D");
-  Tout->Branch("TrackNhits",&TrackNhits,"TrackNhits/I");
-  Tout->Branch("Nlayers",&nlayers,"Nlayers/I");
-  Tout->Branch("Ncluster",Nclustperlayer,"Ncluster[Nlayers]/I");
-  Tout->Branch("HitModule",HitModule,"HitModule[TrackNhits]/I");
-  Tout->Branch("HitLayer",HitLayer,"HitLayer[TrackNhits]/I");
-  Tout->Branch("HitXlocal",HitXlocal,"HitXlocal[TrackNhits]/D");
-  Tout->Branch("HitYlocal",HitYlocal,"HitYlocal[TrackNhits]/D");
-  Tout->Branch("HitXglobal",HitXglobal,"HitXglobal[TrackNhits]/D");
-  Tout->Branch("HitYglobal",HitYglobal,"HitYglobal[TrackNhits]/D");
-  Tout->Branch("HitZglobal",HitZglobal,"HitZglobal[TrackNhits]/D");
-  Tout->Branch("HitXresid",HitXresid,"HitXresid[TrackNhits]/D");
-  Tout->Branch("HitYresid",HitYresid,"HitYresid[TrackNhits]/D");
-  Tout->Branch("HitXresidE",HitXresidE,"HitXresidE[TrackNhits]/D");
-  Tout->Branch("HitYresidE",HitYresidE,"HitYresidE[TrackNhits]/D");
-  Tout->Branch("HitSigX",HitSigX,"HitSigX[TrackNhits]/D");
-  Tout->Branch("HitSigY",HitSigY,"HitSigY[TrackNhits]/D");
-  Tout->Branch("HitXmom",HitXmom,"HitXmom[TrackNhits]/D");
-  Tout->Branch("HitYmom",HitYmom,"HitYmom[TrackNhits]/D");
-  Tout->Branch("HitADCX",HitADCX,"HitADCX[TrackNhits]/D");
-  Tout->Branch("HitADCY",HitADCY,"HitADCY[TrackNhits]/D");
-  Tout->Branch("HitADCasym",HitADCasym,"HitADCasym[TrackNhits]/D");
-  Tout->Branch("HitTmean",HitTmean,"HitTmean[TrackNhits]/D");
-  Tout->Branch("HitdT",HitdT,"HitdT[TrackNhits]/D");
-  Tout->Branch("HitCorrCoeff",HitCorrCoeff,"HitCorrCoeff[TrackNhits]/D");
-  Tout->Branch("StripMaxCorrCoeff",StripMaxCorrCoeff,"StripMaxCorrCoeff[TrackNhits]/D");
-  Tout->Branch("HitNstripX",HitNstripX,"HitNstripX[TrackNhits]/I");
-  Tout->Branch("HitNstripY",HitNstripY,"HitNstripY[TrackNhits]/I");
 
   double xgmin_all=1e9, xgmax_all=-1e9, ygmin_all=1e9, ygmax_all=-1e9;
   map<int,double> xgmin_layer, xgmax_layer, ygmin_layer, ygmax_layer;
@@ -3139,64 +3051,14 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
   TCanvas *c_proj = new TCanvas("c1_proj","c1_proj",1200,800);
   c_proj->Divide(2,1);
   
-  //  TCanvas *c2 = new TCanvas("c2","c2",1600,1200);
   
   TClonesArray *hframe_layers = new TClonesArray("TH2D",nlayers);
   
-  
-  // TH2D *hframe1 = new TH2D("hframe1","",nstripsy,-0.5,nstripsy-0.5,3*nstripsx,-0.5,3*nstripsx-0.5);
-  // TH2D *hframe2 = new TH2D("hframe2","",nstripsy,-0.5,nstripsy-0.5,3*nstripsx,-0.5,3*nstripsx-0.5);
-  // TH2D *hframe3 = new TH2D("hframe3","",nstripsy,-0.5,nstripsy-0.5,3*nstripsx,-0.5,3*nstripsx-0.5);
-  // TH2D *hframe4 = new TH2D("hframe4","",nstripsy,-0.5,nstripsy-0.5,3*nstripsx,-0.5,3*nstripsx-0.5);
-
-  // double strip_pitch = 0.4; //mm
-  // double ymin = -220.0, ymax=220.0;
-  // double xmin = -800.0, xmax=800.0;
-
-  // int nbinsy = (ymax-ymin)/strip_pitch;
-  // int nbinsx = (xmax-xmin)/strip_pitch;
-  
-  // TH2D *hframe1 = new TH2D("hframe1","",nbinsy,ymin,ymax,nbinsx,xmin,xmax);
-  // TH2D *hframe2 = new TH2D("hframe2","",nbinsy,ymin,ymax,nbinsx,xmin,xmax);
-  // TH2D *hframe3 = new TH2D("hframe3","",nbinsy,ymin,ymax,nbinsx,xmin,xmax);
-  // TH2D *hframe4 = new TH2D("hframe4","",nbinsy,ymin,ymax,nbinsx,xmin,xmax);
-  
-  // if( eventdisplaymode != 0 ){
-
-   
-  //   //c1 = new TCanvas("c1","c1",400,1500);
-  //   //c1->Divide(2,1,.001,.001);
-
-  //   // hframe1 = new TH2D("hframe1","",nstripsy,-0.5,nstripsy-0.5,3*nstripsx,-0.5,3*nstripsx-0.5);
-  //   // hframe2 = new TH2D("hframe2","",nstripsy,-0.5,nstripsy-0.5,3*nstripsx,-0.5,3*nstripsx-0.5);
-  //   // hframe3 = new TH2D("hframe3","",nstripsy,-0.5,nstripsy-0.5,3*nstripsx,-0.5,3*nstripsx-0.5);
-  //   // hframe4 = new TH2D("hframe4","",nstripsy,-0.5,nstripsy-0.5,3*nstripsx,-0.5,3*nstripsx-0.5);
-  
-  //   c1->cd(1);
-  //   hframe1->Draw("colz");
-  //   c1->cd(2);
-  //   hframe2->Draw("colz");
-  //   c1->cd(3);
-  //   hframe3->Draw("colz");
-  //   c1->cd(4);
-  //   hframe4->Draw("colz");
-  //   c1->Update();
-  // } //else {
-  //   //c1->Delete();
-  //   //}
     
   
   TChain *C = new TChain("GEMHit");
 
   C->Add(filename);
-
-  // int nch;
-  // int *strip;
-  // int *adc0;
-
-  // C->SetBranchAddress("nch",&nch);
-  // C->SetBranchAddress("strip",strip);
-  // C->SetBranchAddress("adc0",adc0);
 
   //GEMHit_tree_HallAtest *T = new GEMHit_tree_HallAtest(C);
   //Instead of using a skeleton class, let's define all needed variables and initialize using SetBranchAddress depending on configuration:
@@ -3261,207 +3123,8 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
   
   long nevent=0;
 
-  fout->cd();
-
   
-  TH2D *hCALfadc_vs_ch = new TH2D("hCALfadc_vs_ch","",32,-0.5,31.5,1000,0.0,25000.0);
-  TH2D *hCALftime_vs_ch = new TH2D("hCALftime_vs_ch","",32,-0.5,31.5,51,-0.5,50.5);
-  TH1D *hCALfadc_sum = new TH1D("hCALfadc_sum","",2000,0.0,50000.0);
-
-  //TH1D *hCALfadc_sum_nocuts = new TH1D("hCALfadc_sum_nocuts","",2000,0.0,50000.0);
-  // TH1D *hCALfadc_shsum = new TH1D("hCALfadc_shsum","",2000,0.0,50000.0);
-  // TH1D *hCALfadc_pssum = new TH1D("hCALfadc_pssum","",2000,0.0,50000.0);
-  //TH2D *hCALfadc_sh_vs_ps = new TH2D("hCALfadc_sh_vs_ps","",250,0.0,50000.0,250,0.0,50000.0);
-
-  //Scintillator info:
-  TH2D *hSCINT_tdc_vs_ch = new TH2D("hSCINT_tdc_vs_ch", "", 25,-0.5,24.5, 600,0.0,150.0 );
-  TH1D *hNgoodScint = new TH1D("hNgoodScint", "N scint. TDC hits", 11, -0.5, 10.5 ); 
-
-
-  TH2D *hCALfadc_vs_ch_goodtrack = new TH2D("hCALfadc_vs_ch_goodtrack","",32,-0.5,31.5,1000,0.0,25000.0);
-  TH2D *hCALftime_vs_ch_goodtrack = new TH2D("hCALftime_vs_ch_goodtrack","",32,-0.5,31.5,51,-0.5,50.5);
-  TH1D *hCALfadc_sum_goodtrack = new TH1D("hCALfadc_sum_goodtrack","",2000,0.0,50000.0);
-
-  // TH1D *hCALfadc_sum_nocuts = new TH1D("hCALfadc_sum_nocuts","",2000,0.0,50000.0);
-  // TH1D *hCALfadc_shsum = new TH1D("hCALfadc_shsum","",2000,0.0,50000.0);
-  // TH1D *hCALfadc_pssum = new TH1D("hCALfadc_pssum","",2000,0.0,50000.0);
-  //TH2D *hCALfadc_sh_vs_ps = new TH2D("hCALfadc_sh_vs_ps","",250,0.0,50000.0,250,0.0,50000.0);
-
-  //Scintillator info:
-  TH2D *hSCINT_tdc_vs_ch_goodtrack = new TH2D("hSCINT_tdc_vs_ch_goodtrack", "", 25,-0.5,24.5, 600, 0.0, 150.0);
-  TH1D *hNgoodScint_goodtrack = new TH1D("hNgoodScint_goodtrack", "N scint. TDC hits", 11, -0.5, 10.5 ); 
-
-  TH1D *hNtracks_nocuts = new TH1D("hNtracks_nocuts", "Number of tracks/trigger", 11, -0.5, 10.5 );
-  TH1D *hNtracks_GoodScintAndCALO = new TH1D("hNtracks_GoodScintAndCALO", "Number of tracks/trigger with good scint. and CALO hits", 11, -0.5, 10.5);
-  
-  TH1D *hNlayers_hit = new TH1D("hNlayers_hit","",nlayers+1,-0.5,nlayers+0.5);
-  TH1D *hNlayers_hitX = new TH1D("hNlayers_hitX","",nlayers+1,-0.5,nlayers+0.5);
-  TH1D *hNlayers_hitY = new TH1D("hNlayers_hitY","",nlayers+1,-0.5,nlayers+0.5);
-  TH1D *hNlayers_hitXY = new TH1D("hNlayers_hitXY","",nlayers+1,-0.5,nlayers+0.5);
-  TH2D *hNlayers_hitXvsY = new TH2D("hNlayers_hitXvsY","",nlayers+1,-0.5,nlayers+0.5,nlayers+1,-0.5,nlayers+0.5);
-
-  TH2D *hNstripsX_layer = new TH2D("hNstripsX_layer","N strips X per layer",101,-0.5,100.5,nlayers,-0.5,nlayers-0.5);
-  TH2D *hNstripsY_layer = new TH2D("hNstripsY_layer","N strips Y per layer",101,-0.5,100.5,nlayers,-0.5,nlayers-0.5);
-  
-  TH2D *hNclustX_layer = new TH2D("hNclustX_layer","N clusters X per layer",101,-0.5,100.5,nlayers,-0.5,nlayers-0.5);
-  TH2D *hNclustY_layer = new TH2D("hNclustY_layer","N clusters Y per layer",101,-0.5,100.5,nlayers,-0.5,nlayers-0.5);
-
-  TH1D *hNlayers_2Dclust = new TH1D("hNlayers_2Dclust","N layers with 2D cluster reconstructed",nlayers+1,-0.5,nlayers+0.5);
-
-  TH2D *hNstripsX_module = new TH2D("hNstripsX_module","N strips X per module",101,-0.5,100.5,nmodules,-0.5,nmodules-0.5);
-  TH2D *hNstripsY_module = new TH2D("hNstripsY_module","N strips Y per module",101,-0.5,100.5,nmodules,-0.5,nmodules-0.5);
-  
-  TH2D *hNclust_module = new TH2D("hNclust_module","N clusters 2D per module",101,-0.5,100.5,nmodules,-0.5,nmodules-0.5);
-  
-  TH1D *hclustwidth_x = new TH1D("hclustwidth_x","Width of X clusters in strips",100,0.5,100.5);
-  TH1D *hclustwidth_y = new TH1D("hclustwidth_y","Width of Y clusters in strips",100,0.5,100.5);
-  TH1D *hclustADCsum_x = new TH1D("hclustADCsum_x","ADC sum in X strips",200,0.0,100000.0);
-  TH1D *hclustADCsum_y = new TH1D("hclustADCsum_y","ADC sum in Y strips",200,0.0,100000.0);
-
-  TH2D *hclustwidth_x_module = new TH2D("hclustwidth_x_module","Width of clusters in X strips",maxnstripXpercluster,0.5,maxnstripXpercluster+0.5,nmodules,-0.5,nmodules-0.5);
-  TH2D *hclustwidth_y_module = new TH2D("hclustwidth_y_module","Width of clusters in Y strips",maxnstripYpercluster,0.5,maxnstripYpercluster+0.5,nmodules,-0.5,nmodules-0.5);
-
-  TH2D *hmaxtimebin_xstrip_module = new TH2D("hmaxtimebin_xstrip_module","Max time bin for max X strip on cluster in track", nADCsamples,-0.5,nADCsamples-0.5,nmodules,-0.5,nmodules-0.5);
-  TH2D *hmaxtimebin_ystrip_module = new TH2D("hmaxtimebin_ystrip_module","Max time bin for max Y strip on cluster in track", nADCsamples,-0.5,nADCsamples-0.5,nmodules,-0.5,nmodules-0.5);
-  //TH2D *hmaxtimebin_xclust_module = new TH2D("hmaxtimebin_xclust_module","Max time bin for cluster-summed X samples on cluster in track", nADCsamples,-0.5,nADCsamples-0.5,nmodules,-0.5,nmodules-0.5);
-  //TH2D *hmaxtimebin_yclust_module = new TH2D("hmaxtimebin_yclust_module","Max time bin for cluster-summed Y samples on cluster in track", nADCsamples,-0.5,nADCsamples-0.5);
-
-  TH2D *hADCasym_vs_module = new TH2D("hADCasym_vs_module","(ADCX-ADCY)/(ADCX+ADCY) asymmetry by module, clusters on track",nmodules,-0.5,nmodules-0.5,200,-1.05,1.05);
-  TH2D *hdT_vs_module = new TH2D("hdT_vs_module","t_{x} - t_{y} (ns), clusters on track",nmodules,-0.5,nmodules-0.5,200,-50.0,50.0);
-
-  TH2D *hADCsum_Xstrip_max_module = new TH2D("hADCsum_Xstrip_max_module", "ADC sum on max X strip, cluster in track",500,0.0,1.5e4,nmodules,-0.5,nmodules-0.5);
-  TH2D *hADCsum_Ystrip_max_module = new TH2D("hADCsum_Ystrip_max_module", "ADC sum on max Y strip, cluster in track",500,0.0,1.5e4,nmodules,-0.5,nmodules-0.5);
-
-  TH2D *hADCsampmax_Xstrip_module = new TH2D("hADCsampmax_Xstrip_module", "Max ADC sample on max X strip, cluster in track",500,0.0,3000.0,nmodules,-0.5,nmodules-0.5);
-  TH2D *hADCsampmax_Ystrip_module = new TH2D("hADCsampmax_Ystrip_module", "Max ADC sample on max Y strip, cluster in track",500,0.0,3000.0,nmodules,-0.5,nmodules-0.5);
-
-  TH2D *hADCprodXYstrip_max_module = new TH2D("hADCprodXYstrip_max_module", "#sqrt{ADCX*ADCY} sums for max x,y strips",500,0.0,1.5e4,nmodules,-0.5,nmodules-0.5);
-  TH2D *hADCprodXYsamp_max_module = new TH2D("hADCprodXYsamp_max_module", "#sqrt{ADCX*ADCY} max samples, max xy strips",500,0.0,3000.0,nmodules,-0.5,nmodules-0.5);
-  TH2D *hADCprodXYclust_module = new TH2D("hADCprodXYclust_module", "#sqrt{ADCX*ADCY} cluster sums",500,0.0,5e4,nmodules,-0.5,nmodules-0.5);
-  TH2D *hADCsumXclust_module = new TH2D("hADCsumXclust_module","ADCX cluster sum",500,0.0,5e4,nmodules,-0.5,nmodules-0.5);
-  TH2D *hADCsumYclust_module = new TH2D("hADCsumYclust_module","ADCY cluster sum",500,0.0,5e4,nmodules,-0.5,nmodules-0.5);
-  TH2D *hStrip_maxcor_module = new TH2D("hStrip_maxcor_module","Correlation coefficient for cluster seed pixel",1000,-1.1,1.1,nmodules,-0.5,nmodules-0.5);
-  TH2D *hClust_corr_module = new TH2D("hClust_corr_module","Cluster corr. coeff.",500,-1.1,1.1,nmodules,-0.5,nmodules-0.5);
-  
-  
-  TH2D *hNclustX_vs_NclustY = new TH2D("hNclustX_vs_NclustY","Nclusters X vs Y", 101,-0.5,100.5,101,-0.5,100.5);
-  // TH2D *hNhitX_vs_NhitY = new TH2D("hNhitX_vs_NhitY","N hits X vs Y",101,-0.5,100.5,101,-0.5,100.5);
-  
-  // TH1D *hHitAxfit = new TH1D("hHitAx","Max ADC of fitted X hits",200,0.0,10000.0);
-  // TH1D *hHitTX0fit = new TH1D("hHitTX0fit","T_0 of fitted X hits",200,-150.0,300.0);
-  // TH1D *hHitXChi2NDF = new TH1D("hHitXChi2NDF","Chi2/NDF of fitted X hits",200,0.0,100.0);
-  // TH1D *hHitXSigmaXfit = new TH1D("hHitXSigmaXfit", "sigma of Lorentzian fit to X cluster",200,0.0,5.0);
-  // TH1D *hHitXTaufit = new TH1D("hHitXTaufit","Tau of fit to pulse shape in time-domain, X",200,0.0,100.0);
-  
-
-  // TH1D *hHitAyfit = new TH1D("hHitAy","Max ADC of fitted Y hits",200,0.0,10000.0);
-  // TH1D *hHitTY0fit = new TH1D("hHitTY0fit","T_0 of fitted Y hits",200,-150.0,300.0);
-  // TH1D *hHitYChi2NDF = new TH1D("hHitYChi2NDF","Chi2/NDF of fitted Y hits",200,0.0,100.0);
-  // TH1D *hHitYSigmaYfit = new TH1D("hHitYSigmaYfit", "sigma of Lorentzian fit to Y cluster",200,0.0,5.0);
-  // TH1D *hHitYTaufit = new TH1D("hHitYTaufit","Tau of fit to pulse shape in time-domain, Y",200,0.0,100.0);
-
-  // TH2D *hHit2D_ADCXvsY = new TH2D("hHit2D_ADCXvsY","Amax X vs Y, 2D matches",250,0.0,4000.0,250,0.0,4000.0);
-  // TH2D *hHit2D_T0XvsY = new TH2D("hHit2D_T0XvsY","T0 X vs Y, 2D matches",250,-150.0,300.0,250,-150.0,300.0);
-  // TH1D *hHit2D_ADCdiff = new TH1D("hHit2D_ADCdiff","Amax X - Y, 2D matches",250,-1000.0,1000.0);
-  // TH1D *hHit2D_T0diff = new TH1D("hHit2D_T0diff","T0 X - Y, 2D matches",250,-100.0,100.0);
-
-  // TH1D *hHit2D_Chi2Match = new TH1D("hHit2D_Chi2Match","Chi^2 of 2D match, best 2D hit per module",250,0.0,150.0);
-
-  // TH1D *hHit2D_ADCasym = new TH1D("hHit2D_ADCasym","(ADCX-ADCy)/(ADCX+ADCY)",250,-1.5,1.5);
-  
-  TH2D *hADCvsSampleAllStrips = new TH2D("hADCvsSampleAllStrips","",6,-0.5,5.5,250,-500,4500.0);
-  TH2D *hADCvsSampleMaxStrip = new TH2D("hADCvsSampleMaxStrip","",6,-0.5,5.5,250,-500,4500.0);
-
-  TH1D *hADCsumAllStrips = new TH1D("hADCsumAllStrips","",250,-2000.0,20000.0);
-  TH1D *hStripTmean = new TH1D("hStripTmean","",250,0.0,150.0);
-  TH1D *hStripSigmaT = new TH1D("hStripSigmaT","",250,0.0,500.0);
-
-  TH1D *hStripTcorr = new TH1D("hStripTcorr","",250,0.0,150.0);
-  
-  TH1D *hN2Dmatch = new TH1D("hN2Dmatch","N 2D matches per event",101,-0.5,100.5);
-  
-  TH2D *hClust2D_ADCXvsY = new TH2D("hClust2D_ADCXvsY","ADC sum X vs Y, 2D cluster match",500,0.0,50000.0,500,0.0,5e4);
-  TH2D *hClust2D_T0XvsY = new TH2D("hClust2D_T0XvsY", "T0 X vs T, 2D cluster match",250,0.0,150.0,250,0.,150.);
-
-  TH1D *hClust2D_ADCdiff = new TH1D("hClust2D_ADCdiff","ADC X - Y, 2D match",500,-10000.0,10000.0);
-  TH1D *hClust2D_Tdiff = new TH1D("hClust2D_Tdiff","T0 X - Y, 2D match",500,-100.,100.);
-  TH1D *hClust2D_ADCasym = new TH1D("hClust2D_ADCasym","(ADC X - ADC Y)/(ADC X + ADC Y), 2D match",500,-1.5,1.5);
-  TH2D *hClust2D_ADCasym_vs_ADCavg = new TH2D("hClust2D_ADCasym_vs_ADCavg","ADC X-Y asym vs X-y avg",500,0.0,5e4,500,-1.5,1.5);
-  TH2D *hClust2D_ADCdiff_vs_ADCavg = new TH2D("hClust2D_ADCdiff_vs_ADCavg","ADC X-Y diff vs X-Y avg",500,0.0,5e4,500,-10000.,10000.);
-
-  TH2D *hClust2D_NstripXvsNstripY = new TH2D("hClust2D_NstripX_vs_NstripY","Nstrips X vs Y",maxnstripXpercluster,0.5,maxnstripXpercluster+0.5,maxnstripYpercluster,0.5,maxnstripYpercluster+0.5);
-
-  TH2D *hClust2D_Xmom_vs_NstripX = new TH2D("hClust2D_Xmom_vs_NstripX","x - xstripmax vs nstripx",maxnstripXpercluster,0.5,maxnstripXpercluster+0.5,600,-3,3);
-  TH2D *hClust2D_Ymom_vs_NstripY = new TH2D("hClust2D_Ymom_vs_NstripY","y - ystripmax vs nstripy",maxnstripYpercluster,0.5,maxnstripYpercluster+0.5,600,-3,3);
-  
-  TH1D *hADCsumXstrip_max = new TH1D("hADCsumXstrip_max","ADC sum for max X strip, cluster on track only",500,0.0,1.5e4);
-  TH1D *hADCsumYstrip_max = new TH1D("hADCsumYstrip_max","ADC sum for max Y strip, cluster on track only",500,0.0,1.5e4);
-
-  TH2D *hADCsampXstrip_max = new TH2D("hADCsampXstrip_max","ADC samples for max strip, clusters on track only",6,-0.5,5.5,500,0.0,4000.0);
-  TH2D *hADCsampYstrip_max = new TH2D("hADCsampYstrip_max","ADC samples for max strip, clusters on track only",6,-0.5,5.5,500,0.0,4000.0);
-
-  TH2D *hADCsampXclust = new TH2D("hADCsampXclust","Cluster-summed X ADC samples, cluster on track",6,-0.5,5.5,500,0.0,10000.0);
-  TH2D *hADCsampYclust = new TH2D("hADCsampYclust","Cluster-summed Y ADC samples, cluster on track",6,-0.5,5.5,500,0.0,10000.0);
-  
-  TH1D *hADCsampmax_Xstrip = new TH1D("hADCsampmax_Xstrip","max ADC sample for max strip, clusters on track",500,0.0,3000.0);
-  TH1D *hADCsampmax_Ystrip = new TH1D("hADCsampmax_Ystrip","max ADC sample for max strip, clusters on track",500,0.0,3000.0);
-
-  TH1D *hADCprodXYstrip_max = new TH1D("hADCprodXYstrip_max","sqrt(ADCx*ADCy) sums for max x,y strips",500,0.0,1.5e4);
-  TH1D *hADCprodXYsamp_max = new TH1D("hADCprodXYsamp_max","sqrt(ADCx*ADCy) max samples for max x,y strips",500,0.0,3000.0);
-  TH1D *hADCprodXYcluster = new TH1D("hADCprodXYcluster","sqrt(ADCX*ADCY) cluster sums",500.0,0.0,5.0e4);
-  
-  TH1D *hADCsumXclust_max = new TH1D("hADCsumXclust_max","Cluster ADC sum X, clusters on tracks",500,0.0,5e4);
-  TH1D *hADCsumYclust_max = new TH1D("hADCsumYclust_max","Cluster ADC sum Y, clusters on tracks",500,0.0,5e4);
-  
-  TH1D *hNtracks_found = new TH1D("hNtracks_found","Number of tracks found",11,-0.5,10.5);
-  TH1D *hNhitspertrack = new TH1D("hNhitspertrack","Number of hits per track",nlayers+1,-0.5,nlayers+0.5);
-  
-  //(resid^2)/sigma^2 = chi^2: Max resid = sigma*sqrt(chi^2)
-
-  double maxresid = 2.0*sigma_hitpos*sqrt(TrackChi2Cut);
-  
-  TH1D *hTrackChi2NDF = new TH1D("hTrackChi2NDF","Track chi^2/NDF",1000,0.0,TrackChi2Cut);
-  TH2D *hTrackXresid_vs_layer = new TH2D("hTrackXresid_vs_layer","Track X residuals by layer",nlayers,-0.5,nlayers-0.5,200,-maxresid,maxresid); //units are mm
-  TH2D *hTrackYresid_vs_layer = new TH2D("hTrackYresid_vs_layer","Track Y residuals by layer",nlayers,-0.5,nlayers-0.5,200,-maxresid,maxresid); //units are mm
-  TH2D *hTrackXresid_vs_module = new TH2D("hTrackXresid_vs_module", "Track X residuals by module",nmodules,-0.5,nmodules-0.5,200,-maxresid,maxresid);
-  TH2D *hTrackYresid_vs_module = new TH2D("hTrackYresid_vs_module", "Track Y residuals by module",nmodules,-0.5,nmodules-0.5,200,-maxresid,maxresid);
-
-  TH2D *hTrackXeresid_vs_layer = new TH2D("hTrackXeresid_vs_layer","Track X eresiduals by layer",nlayers,-0.5,nlayers-0.5,200,-maxresid,maxresid); //units are mm
-  TH2D *hTrackYeresid_vs_layer = new TH2D("hTrackYeresid_vs_layer","Track Y eresiduals by layer",nlayers,-0.5,nlayers-0.5,200,-maxresid,maxresid); //units are mm
-  TH2D *hTrackXeresid_vs_module = new TH2D("hTrackXeresid_vs_module", "Track X eresiduals by module",nmodules,-0.5,nmodules-0.5,200,-maxresid,maxresid);
-  TH2D *hTrackYeresid_vs_module = new TH2D("hTrackYeresid_vs_module", "Track Y eresiduals by module",nmodules,-0.5,nmodules-0.5,200,-maxresid,maxresid);
-  
-  TH2D *hTrackXY = new TH2D("hTrackXY","Track X fit vs Y fit",1000,ygmin_all-25.0, ygmax_all+25.0, 1000, xgmin_all-25.0, xgmax_all+25.0);
-  TH1D *hTrackXp = new TH1D("hTrackXp","Track dx/dz fit", 1000,-1.0,1.0);
-  TH1D *hTrackYp = new TH1D("hTrackYp","Track dy/dz fit", 1000,-1.0,1.0);
-
-  TH1D *hClust_corr = new TH1D("hClust_corr","Cluster correlation coefficient, clusters on tracks",1000,-1.1,1.1);
-  TH1D *hStrip_maxcor = new TH1D("hStrip_maxcor","Corr. coeff, max X and Y strips",1000,-1.1,1.1);
-
-  TH1D *hStrip_dT = new TH1D("hStrip_dT","t_{strip}-t_{clust} (ns), strips in clusters on tracks",1000,-100.0,100.0);
-  TH2D *hStrip_dT_vs_ADCsum = new TH2D("hStrip_dT_vs_ADCsum","t_{strip}-t_{clust} (ns) vs strip ADC sum",250,0.0,1.5e4,250,-100.0,100.0);
-
-  TH1D *hStrip_dTwalkcor = new TH1D("hStrip_dTwalkcor","t_{strip}-t_{clust} (ns) w/walk correction",1000,-100,100);
-  TH2D *hStrip_dTwalkcor_vs_ADC = new TH2D("hStrip_dTwalkcor_vs_ADC","t_{strip}-t_{clust} (ns) vs ADC, walk cor.",250,0.0,1.5e4,250,-100,100);
-
-  // TH1D *hStrip_Afit = new TH1D("hStrip_Afit", "A strip fit", 1000,0.0,300.0);
-  // TH1D *hStrip_taufit = new TH1D("hStrip_taufit","tau strip fit", 1000.0,0.0,300.0);
-  
-  // TH1D *hStrip_Tfit = new TH1D("hStrip_Tfit","t_{strip} fit (ns), strips in clusters on tracks",1000,-150.0,150.0);
-  // TH1D *hStrip_TfitX = new TH1D("hStrip_TfitX","t_{strip} fit (ns), X strips in clusters on tracks",1000,-150.0,150.0);
-  // TH1D *hStrip_TfitY = new TH1D("hStrip_TfitY","t_{strip} fit (ns), Y strips in clusters on tracks",1000,-150.0,150.0);
-
-  // TH2D *hStrip_TfitXvsY = new TH2D("hStrip_TfitXvsY","Strip tfit_{x} vs. tfit_{y}, strips in cluster on track",300,-150,150,300,-150,150);
-  
-  TClonesArray *hdidhit_layer = new TClonesArray("TH2D",nlayers);
-  TClonesArray *hshouldhit_layer = new TClonesArray("TH2D",nlayers);
-
   TClonesArray *hxyhit_layer = new TClonesArray("TH2D",nlayers);
-  //TClonesArray *hxytrack_layer = new TClonesArray("TH2D",nlayers);
-
-  TClonesArray *hdidhit_module = new TClonesArray("TH2D",nmodules);
-  TClonesArray *hshouldhit_module = new TClonesArray("TH2D",nmodules);
-  TClonesArray *hxyhit_module = new TClonesArray("TH2D",nmodules);
   
   long ntotal = C->GetEntries();
 
@@ -3505,15 +3168,6 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
     }
     
     TString hnametemp;
-    
-    new( (*hdidhit_layer)[ilayer] ) TH2D( hnametemp.Format("hdidhit_layer%d",ilayer), "Hit on track in layer", TMath::Nint(nbinsy_eff), ygmin_layer[ilayer]-10.0, ygmax_layer[ilayer]+10.0, TMath::Nint(nbinsx_eff), xgmin_layer[ilayer]-25.0,xgmax_layer[ilayer]+25.0 );
-    new( (*hshouldhit_layer)[ilayer] ) TH2D( hnametemp.Format("hshouldhit_layer%d",ilayer), "Track passed through", TMath::Nint(nbinsy_eff), ygmin_layer[ilayer]-10.0, ygmax_layer[ilayer]+10.0, TMath::Nint(nbinsx_eff), xgmin_layer[ilayer]-25.0,xgmax_layer[ilayer]+25.0);
-    
-    //add a few-mm "buffer zone" at the edges of this histogram:
-    new( (*hxyhit_layer)[ilayer] ) TH2D( hnametemp.Format("hxyhit_layer%d",ilayer), "X vs. Y of hits on tracks",
-					 nbinsy_hitmap, ygmin_layer[ilayer]-10.0, ygmax_layer[ilayer]+10.0,
-					 nbinsx_hitmap, xgmin_layer[ilayer]-25.0, xgmax_layer[ilayer]+25.0 );
-    
     
     new( (*hframe_layers)[ilayer] ) TH2D( hnametemp.Format("hframe_layer%d", ilayer), hnametemp.Format("Layer %d", ilayer),
 					  200, ygmin_layer[ilayer]-10.0, ygmax_layer[ilayer]+10.0,
@@ -3566,58 +3220,10 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
 
 
 
-  TH1::SetDefaultSumw2();
-  TH2::SetDefaultSumw2();
 
-  double nbins_eff_module = double(ntotal)/400.0*double(nlayers)/double(nmodules);
-  double nbinsx_eff_module,nbinsy_eff_module;
-  
-  for( int imodule=0; imodule<nmodules; imodule++ ){ //Add creation of module-specific efficiency histograms and hit maps:
-    TRotation Rtemp;
-    Rtemp.RotateX(mod_ax[imodule]);
-    Rtemp.RotateY(mod_ay[imodule]);
-    Rtemp.RotateZ(mod_az[imodule]);
+  int n_saved = 0;
 
-    mod_Rot[imodule] = Rtemp;
-    mod_Rotinv[imodule] = Rtemp.Inverse();
-
-    int nbinsaxis_hitmap = 250;
-    int nbinsy_hitmap,nbinsx_hitmap;
-    
-    if( mod_Lx[imodule] > mod_Ly[imodule] ){
-      double ratio = mod_Lx[imodule]/mod_Ly[imodule];
-      nbinsy_eff_module = sqrt(nbins_eff_module/ratio);
-      nbinsx_eff_module = ratio*nbinsy_eff_module;
-
-      nbinsy_hitmap = nbinsaxis_hitmap;
-      nbinsx_hitmap = TMath::Nint(ratio*nbinsaxis_hitmap);
-    } else {
-      double ratio = mod_Ly[imodule]/mod_Lx[imodule];
-      nbinsx_eff_module = sqrt(nbins_eff_module/ratio);
-      nbinsy_eff_module = ratio * nbinsx_eff_module;
-
-      nbinsx_hitmap = nbinsaxis_hitmap;
-      nbinsy_hitmap = TMath::Nint(ratio*nbinsaxis_hitmap);
-    }
-
-    TString hnametemp;
-    new( (*hdidhit_module)[imodule] ) TH2D( hnametemp.Format("hdidhit_module%d",imodule),"Hit on track in module",
-					    TMath::Nint(nbinsy_eff_module), -mod_Ly[imodule]/2.0-10.0,mod_Ly[imodule]/2.0+10.0,
-					    TMath::Nint(nbinsx_eff_module), -mod_Lx[imodule]/2.0-10.0,mod_Lx[imodule]/2.0+10.0 );
-
-    new( (*hshouldhit_module)[imodule] ) TH2D( hnametemp.Format("hshouldhit_module%d",imodule), "Track passed through module",
-					       TMath::Nint(nbinsy_eff_module), -mod_Ly[imodule]/2.0-10.0,mod_Ly[imodule]/2.0+10.0,
-					       TMath::Nint(nbinsx_eff_module), -mod_Lx[imodule]/2.0-10.0,mod_Lx[imodule]/2.0+10.0 );
-
-
-    new( (*hxyhit_module)[imodule] ) TH2D( hnametemp.Format("hxyhit_module%d",imodule), "X vs Y of hits on tracks",
-					   nbinsy_hitmap, -mod_Ly[imodule]/2.0-10.0,mod_Ly[imodule]/2.0+10.0,
-					   nbinsx_hitmap, -mod_Lx[imodule]/2.0-10.0,mod_Lx[imodule]/2.0+10.0 );
-    
-  }
-  
-  while( C->GetEntry(nevent++) && (NMAX < 0 || nevent < NMAX ) ){
-    if( nevent % 1000 == 0 ) cout << nevent << endl;
+  while( C->GetEntry(nevent++) && (n_saved < nevents_save) ){
 
     EventID = evtID;
     
@@ -3651,33 +3257,6 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
 
     map<int,moduledata_t> ModData;
     
-    // map<int,set<int> > mod_xstrips_hit;
-    // map<int,set<int> > mod_ystrips_hit;
-
-    // //how to store strip amplitudes: mapping of ADC sums by module, strip ID:
-    // map<int,map<int,double> > ADCsum_xstrips;
-    // map<int,map<int,double> > ADCsum_ystrips;
-
-    // //how to store strip ADC samples: mapping of individual samples by module, strip ID:
-    // map<int,map<int,vector<double> > > ADCsamp_xstrips;
-    // map<int,map<int,vector<double> > > ADCsamp_ystrips;
-
-    // map<int,map<int,double> > ADCmax_xstrips; //max ADC sample mapped by module, strip:
-    // map<int,map<int,double> > ADCmax_ystrips; //max ADC sample mapped by module, strip:
-
-    // map<int,map<int,int> > isampmax_xstrips;
-    // map<int,map<int,int> > isampmax_ystrips;
-    
-    // map<int,map<int,double> > Tmean_xstrips;
-    // map<int,map<int,double> > Tsigma_xstrips;
-    // map<int,map<int,double> > Tmean_ystrips;
-    // map<int,map<int,double> > Tsigma_ystrips;
-
-    // map<int,map<int,double> > Tmean_xstrips_walkcor;
-    // map<int,map<int,double> > Tmean_ystrips_walkcor;
-    // map<int,map<int,double> > Tsigma_xstrips_walkcor;
-    // map<int,map<int,double> > Tsigma_ystrips_walkcor;
-
     if( DataFormat == "HALLA" ){ //Fill CALO and SCINT information:
       double fadcsum = 0.0;
       double fshowersum = 0.0;
@@ -3694,9 +3273,6 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
 	
 	int maxtimesample = ftimting[icalhit];
 	
-	hCALfadc_vs_ch->Fill( globalchan, fadc[icalhit] );
-	hCALftime_vs_ch->Fill( globalchan, ftimting[icalhit] );
-	
 	int tmin = 30, tmax=45;
 	if( globalchan == 19 ) tmin = 24;
 	
@@ -3707,7 +3283,7 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
 	}
       }
       
-      hCALfadc_sum->Fill(fadcsum);
+
 
       CALOsum = fadcsum;
 
@@ -3716,10 +3292,10 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
 	if( tCH[itdc] < 10 && 110.0< ttiming[itdc] && ttiming[itdc] < 135.0 ){
 	  ngoodscint++;
 	}
-	hSCINT_tdc_vs_ch->Fill( tCH[itdc], ttiming[itdc] );
+
       }
 
-      hNgoodScint->Fill( ngoodscint );
+
 
       NGOODSCINT = ngoodscint;
       
@@ -3820,10 +3396,7 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
 	  ModData[module].ADCsamp_xstrips[strip][isamp] = ADCsamples[isamp];
 	  ModData[module].ADCsum_xstrips[strip] += ADCsamples[isamp];
 	  
-	  // ADCsamp_xstrips[module][strip][isamp] = ADCsamples[isamp];
-	  // ADCsum_xstrips[module][strip] += ADCsamples[isamp];
 
-	  hADCvsSampleAllStrips->Fill( isamp, ADCsamples[isamp] );
 	  double tsample = 12.5+25.0*isamp;
 
 	  tsamp[isamp] = tsample;
@@ -3846,44 +3419,12 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
 	
 	tcorr = tmean - walkcor_mean_func->Eval( ModData[module].ADCsum_xstrips[strip] );
 
-	// TGraphErrors *gtemp = new TGraphErrors(nADCsamples, tsamp, ADCsamples, dtsamp, dsamp);
-	// // max of pulse shape occurs at t-t0= tau:
-	// // therefore ADCmax = p0*tau*exp(-1) --> p0 = ADCmax/tau*exp(1)
-	// PulseShape->SetParameter(0,ModData[module].ADCmax_xstrips[strip]/tau_pulseshape*exp(1.0));
-	// double tguess = 12.5+25.0*ModData[module].isampmax_xstrips[strip];
-	
-	// PulseShape->SetParameter(1,tguess-tau_pulseshape);
-	// //PulseShape->FixParameter(2,tau_pulseshape);
-	// PulseShape->SetParError(0,20.0);
-	// PulseShape->SetParError(1,10.0);
-	// PulseShape->SetParError(2,10.0);
-	
-	// // c2->cd();
-	// // gtemp->SetMarkerStyle(20);
-	// // gtemp->Draw("AP");
-	// gtemp->Fit(PulseShape,"SQ0");
-
-	// gPad->Modified();
-	// c2->Update();
-
-	// gSystem->Sleep(10);
-	
-	// ModData[module].Tfit_xstrips[strip] = PulseShape->GetParameter(1);
-	// ModData[module].dTfit_xstrips[strip] = PulseShape->GetParError(1);
-	// ModData[module].Afit_xstrips[strip] = PulseShape->GetParameter(0);
-	// ModData[module].dAfit_xstrips[strip] = PulseShape->GetParError(0);
-	// ModData[module].taufit_xstrips[strip] = PulseShape->GetParameter(2);
-	// ModData[module].dtaufit_xstrips[strip] = PulseShape->GetParError(2);
-	
-	//delete gtemp;
 	
 	ModData[module].Tmean_xstrips[strip] = tmean;
 	ModData[module].Tsigma_xstrips[strip] = tsigma;
 
 	ModData[module].Tmean_xstrips_walkcor[strip] = tcorr;
 	ModData[module].Tsigma_xstrips_walkcor[strip] = walkcor_sigma_func->Eval( ModData[module].ADCsum_xstrips[strip] );
-	
-	hADCsumAllStrips->Fill( ModData[module].ADCsum_xstrips[strip] );
 
 	layers_hitX.insert(layer);
 
@@ -3909,7 +3450,6 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
 	  ModData[module].ADCsamp_ystrips[strip][isamp] = ADCsamples[isamp];
 	  ModData[module].ADCsum_ystrips[strip] += ADCsamples[isamp];
 
-	  hADCvsSampleAllStrips->Fill( isamp, ADCsamples[isamp] );
 
 	  double tsample = 12.5+25.0*isamp;
 
@@ -3930,35 +3470,7 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
 	tmean = tsum/ModData[module].ADCsum_ystrips[strip];
 	tsigma = sqrt(fabs(tsum2/ModData[module].ADCsum_ystrips[strip]-pow(tmean,2)));
 
-	// double tguess = 12.5+25.0*ModData[module].isampmax_ystrips[strip];
 	
-	// TGraphErrors *gtemp = new TGraphErrors(nADCsamples, tsamp, ADCsamples, dtsamp, dsamp);
-	// // max of pulse shape occurs at t-t0= tau:
-	// // therefore ADCmax = p0*tau*exp(-1) --> p0 = ADCmax/tau*exp(1)
-	// PulseShape->SetParameter(0,ModData[module].ADCmax_ystrips[strip]/tau_pulseshape*exp(1.0));
-	// PulseShape->SetParameter(1,tguess-tau_pulseshape);
-	// //	PulseShape->FixParameter(2,tau_pulseshape);
-	// PulseShape->SetParError(0,20.0);
-	// PulseShape->SetParError(1,10.0);
-	// PulseShape->SetParError(2,10.0);
-
-	// // c2->cd();
-	// // gtemp->SetMarkerStyle(20);
-	// // gtemp->Draw("AP");
-	// gtemp->Fit(PulseShape,"SQ0");
-
-	// // gPad->Modified();
-	// // c2->Update();
-	// // gSystem->Sleep(10);
-	
-	// ModData[module].Tfit_ystrips[strip] = PulseShape->GetParameter(1);
-	// ModData[module].dTfit_ystrips[strip] = PulseShape->GetParError(1);
-	// ModData[module].Afit_ystrips[strip] = PulseShape->GetParameter(0);
-	// ModData[module].dAfit_ystrips[strip] = PulseShape->GetParError(0);
-	// ModData[module].taufit_ystrips[strip] = PulseShape->GetParameter(2);
-	// ModData[module].dtaufit_ystrips[strip] = PulseShape->GetParError(2);
-
-	// delete gtemp;
 	
 	tcorr = tmean - walkcor_mean_func->Eval( ModData[module].ADCsum_ystrips[strip] );
 	
@@ -3968,7 +3480,6 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
 	ModData[module].Tmean_ystrips_walkcor[strip] = tcorr;
 	ModData[module].Tsigma_ystrips_walkcor[strip] = walkcor_sigma_func->Eval( ModData[module].ADCsum_ystrips[strip] );
 	
-	hADCsumAllStrips->Fill( ModData[module].ADCsum_ystrips[strip] );
 	
 	layers_hitY.insert(layer);
 
@@ -3980,13 +3491,7 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
 	}
       }
 
-      if( keepstrip ){
-	hStripTmean->Fill(tmean);
-	hStripSigmaT->Fill(tsigma);
-
-	hStripTcorr->Fill( tcorr );
-	
-      }
+      
     }
 
 
@@ -3996,16 +3501,9 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
       }
     }
     
-    hNlayers_hit->Fill( layers_hit.size() );
-    hNlayers_hitX->Fill( layers_hitX.size() );
-    hNlayers_hitY->Fill( layers_hitY.size() );
-    hNlayers_hitXY->Fill( layers_hitXY.size() );
-    hNlayers_hitXvsY->Fill( layers_hitX.size(), layers_hitY.size() );
 
-    for( int ilay=0; ilay<nlayers; ilay++ ){
-      hNstripsX_layer->Fill( NstripX_layer[ilay],ilay );
-      hNstripsY_layer->Fill( NstripY_layer[ilay],ilay );
-    }
+
+
     
     if( layers_hitXY.size() >= TOTAL_REQUIRED_HIT ){ //enough layers hit to (possibly) form a track: only bother with clustering and attempted track finding if this is the case: 
 
@@ -4027,61 +3525,17 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
 	//moduledata_t datatemp;
 	clusterdata_t clusttemp;
 
-	// ModData[*imod].modindex = *imod;
-	// datatemp.modindex = *imod;
-	// datatemp.layerindex = mod_layer[*imod];
-	
-	// datatemp.xstrips = mod_xstrips_hit[*imod];
-	// datatemp.ystrips = mod_ystrips_hit[*imod];
-	// datatemp.ADCsum_xstrips = ADCsum_xstrips[*imod];
-	// datatemp.ADCsum_ystrips = ADCsum_ystrips[*imod];
-	// datatemp.ADCsamp_xstrips = ADCsamp_xstrips[*imod];
-	// datatemp.ADCsamp_ystrips = ADCsamp_ystrips[*imod];
-	// datatemp.ADCmax_xstrips = ADCmax_xstrips[*imod];
-	// datatemp.ADCmax_ystrips = ADCmax_ystrips[*imod];
-	// datatemp.isampmax_xstrips = isampmax_xstrips[*imod];
-	// datatemp.isampmax_ystrips = isampmax_ystrips[*imod];
-	// datatemp.Tmean_xstrips = Tmean_xstrips[*imod];
-	// datatemp.Tsigma_xstrips = Tsigma_xstrips[*imod];
-	// datatemp.Tmean_ystrips = Tmean_ystrips[*imod];
-	// datatemp.Tsigma_ystrips = Tsigma_ystrips[*imod];
-	// datatemp.Tmean_xstrips_walkcor = Tmean_xstrips_walkcor[*imod];
-	// datatemp.Tsigma_xstrips_walkcor = Tsigma_xstrips_walkcor[*imod];
-	// datatemp.Tmean_ystrips_walkcor = Tmean_ystrips_walkcor[*imod];
-	// datatemp.Tsigma_ystrips_walkcor = Tsigma_ystrips_walkcor[*imod];
-	
-	//for( map<int,int>::iterator jmod=mod_maxstripX.begin(); jmod!=mod_maxstripX.end(); ++jmod ){
+
 	int module = *imod;
 	int layer = mod_layer[module];
-
-	// hNstripsX_module->Fill( ModData[module].xstrips.size(),  module );
-	// hNstripsY_module->Fill( ModData[module].ystrips.size(),  module );
 	
 	ModData[module].modindex = module;
 	ModData[module].layerindex = layer;
 	int strip = mod_maxstripX[module];
-	if( fabs( ModData[module].Tmean_xstrips[strip] - 64.3 ) <= 2.5*16.3 &&
-	    fabs( ModData[module].Tsigma_xstrips[strip] -36.25) <= 2.5*5.7 ){
-	  for( int isamp=0; isamp<6; isamp++ ){
-	    
-	    hADCvsSampleMaxStrip->Fill( isamp, ModData[module].ADCsamp_xstrips[strip][isamp] );
-	  }
-	}
+	
 	
 	strip = mod_maxstripY[module];
-	//for( map<int,int>::iterator imod=mod_maxstripY.begin(); imod!=mod_maxstripY.end(); ++imod ){
-	//int module = imod->first;
-	//int strip = imod->second;
-	if( fabs( ModData[module].Tmean_ystrips[strip] - 64.3 ) <= 2.5*16.3 &&
-	    fabs( ModData[module].Tsigma_ystrips[strip] -36.25) <= 2.5*5.7 ){
-	  for( int isamp=0; isamp<6; isamp++ ){
-	    hADCvsSampleMaxStrip->Fill( isamp, ModData[module].ADCsamp_ystrips[strip][isamp] );
-	  }
-	}
-	
 
-	//cout << "starting cluster finding, event " << evtID << ", module " << module << ". (nstrip X, nstrip Y) = (" << ModData[module].xstrips.size()
-	//    << ", " << ModData[module].ystrips.size() << ")" << endl;
 	int clusterflag = find_clusters_by_module_new( ModData[module], clusttemp );
 
 	
@@ -4101,97 +3555,13 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
 
 	Nclust2D_layer[mod_layer[module]]+=clusttemp.nclust2D;
 	
-	for( int iclustx=0; iclustx<clusttemp.nclustx; iclustx++ ){
-	  hclustwidth_x->Fill( clusttemp.nstripx[iclustx] );
-	  hclustADCsum_x->Fill( clusttemp.totalchargex[iclustx] );
-	}
 
-	for( int iclusty=0; iclusty<clusttemp.nclusty; iclusty++ ){
-	  hclustwidth_y->Fill( clusttemp.nstripy[iclusty] );
-	  hclustADCsum_y->Fill( clusttemp.totalchargey[iclusty] );
-	}
-
-	hNclustX_vs_NclustY->Fill( clusttemp.nclusty, clusttemp.nclustx );
-
-	//	hNhitX_vs_NhitY->Fill( clusttemp.nhity1D, clusttemp.nhitx1D );
-	
-	// for( int ihitx=0; ihitx<clusttemp.nhitx1D; ihitx++ ){
-	//   if( clusttemp.nstripx[clusttemp.clustidx_xhit[ihitx]]>2 ){
-	//     hHitAxfit->Fill( clusttemp.Axhit1D[ihitx] );
-	//     hHitXChi2NDF->Fill( clusttemp.chi2ndf_hitx1D[ihitx] );
-
-	//     if( clusttemp.Axhit1D[ihitx] < 2200.0 ){
-	//       hHitTX0fit->Fill( clusttemp.tx0hit1D[ihitx] );
-	   
-	//       //if( clusttemp.nstripx[clusttemp.clustidx_xhit[ihitx]] > 1 )
-	//       hHitXTaufit->Fill( clusttemp.taux0hit1D[ihitx] );
-	//       hHitXSigmaXfit->Fill( clusttemp.sigx0hit1D[ihitx] );
-	//     }
-	//   }
-	// }
-	
-	// for( int ihity=0; ihity<clusttemp.nhity1D; ihity++ ){
-	//   if( clusttemp.nstripy[clusttemp.clustidx_yhit[ihity]] > 2 ){
-	//     hHitYChi2NDF->Fill( clusttemp.chi2ndf_hity1D[ihity] );
-	//     hHitAyfit->Fill( clusttemp.Ayhit1D[ihity] );
-	    
-	//     if( clusttemp.Ayhit1D[ihity] < 2200.0 ){ //cut out "saturation" events from these hits:
-	//       hHitTY0fit->Fill( clusttemp.ty0hit1D[ihity] );	      
-	//       hHitYSigmaYfit->Fill( clusttemp.sigy0hit1D[ihity] );
-	//       hHitYTaufit->Fill( clusttemp.tauy0hit1D[ihity] );
-	//     }
-	//   }
-	// }
-
-	//	for( int ihit2D=0; ihit2D<clusttemp.nhit2D; ihit2D++ ){
-	// for( int ihit2D=0; ihit2D<TMath::Min(1,clusttemp.nhit2D); ihit2D++ ){
-
-	//   if( clusttemp.nstripx[clusttemp.clustidx_xhit[clusttemp.ixhit2D[ihit2D]]] > 2 &&
-	//       clusttemp.nstripy[clusttemp.clustidx_yhit[clusttemp.iyhit2D[ihit2D]]] > 2 ){
-	  
-	//     hHit2D_ADCXvsY->Fill( clusttemp.Axhit1D[clusttemp.ixhit2D[ihit2D]],
-	// 			  clusttemp.Ayhit1D[clusttemp.iyhit2D[ihit2D]] );
-	//     hHit2D_T0XvsY->Fill( clusttemp.tx0hit1D[clusttemp.ixhit2D[ihit2D]],
-	// 			 clusttemp.ty0hit1D[clusttemp.iyhit2D[ihit2D]] );
-	    
-	//     hHit2D_ADCdiff->Fill( clusttemp.dAhit2D[ihit2D] );
-	//     hHit2D_T0diff->Fill( clusttemp.dthit2D[ihit2D] );
-	    
-	//     hHit2D_Chi2Match->Fill( clusttemp.chi2match2D[ihit2D] );
-	    
-	//     hHit2D_ADCasym->Fill( clusttemp.dAhit2D[ihit2D]/(2.*clusttemp.Ahit2D[ihit2D]) );
-	//   }
-	// }
-
-	//cout << "nclust2D = " << clusttemp.nclust2D << endl;
-	
-	// for( int iclust2D=0; iclust2D<clusttemp.nclust2D; iclust2D++ ){
-	//   //if( clusttemp.nstripx2D[iclust2D]>1&&clusttemp.nstripy2D[iclust2D]>1 ){
-	//   if( clusttemp.itrack_clust2D[iclust2D] >= 0 ){ //only fill this information if the cluster is on a found track:
-	//     hClust2D_ADCXvsY->Fill( clusttemp.totalchargex[clusttemp.ixclust2D[iclust2D]],
-	// 			    clusttemp.totalchargey[clusttemp.iyclust2D[iclust2D]] );
-	//     hClust2D_T0XvsY->Fill( clusttemp.txmean[clusttemp.ixclust2D[iclust2D]],
-	// 			   clusttemp.tymean[clusttemp.iyclust2D[iclust2D]] );
-	//     hClust2D_ADCdiff->Fill( clusttemp.dEclust2D[iclust2D] );
-	//     hClust2D_Tdiff->Fill( clusttemp.dtclust2D[iclust2D] );
-	//     hClust2D_ADCasym->Fill( clusttemp.dEclust2D[iclust2D]/(2.0*clusttemp.Eclust2D[iclust2D]) );
-	//     hClust2D_ADCasym_vs_ADCavg->Fill( clusttemp.Eclust2D[iclust2D], clusttemp.dEclust2D[iclust2D]/(2.0*clusttemp.Eclust2D[iclust2D]) );
-	//     hClust2D_ADCdiff_vs_ADCavg->Fill( clusttemp.Eclust2D[iclust2D], clusttemp.dEclust2D[iclust2D] );
-	  
-	//     hStrip_maxcor->Fill( clusttemp.CorrCoeff2D[iclust2D] );
-
-	//     hClust2D_NstripXvsNstripY->Fill( clusttemp.nstripy2D, clusttemp.nstripx2D );
-	//   }
-	//   //}
-	// }
       }
 
       int nlayers_with_2Dclust = 0;
       for( int ilay=0; ilay<nlayers; ilay++ ){
 	if( Nclust2D_layer[ilay] > 0 ) nlayers_with_2Dclust++;
       }
-
-      hNlayers_2Dclust->Fill( nlayers_with_2Dclust );
       
       trackdata_t tracktemp;
 
@@ -4216,13 +3586,8 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
 	auto end = high_resolution_clock::now();
 	totalTime += duration_cast<nanoseconds>(end - start);
 	
-	//cout << "track finding successful..." << endl;
 	
-	hNtracks_found->Fill( tracktemp.ntracks );
-	
-	for( int ilay=0; ilay<nlayers; ilay++ ){
-	  Nclustperlayer[ilay] = Nclust2D_layer[ilay];
-	}
+
 
 	Ntracks = tracktemp.ntracks;
 
@@ -4242,9 +3607,7 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
 	    
 	    int maxtimesample = ftimting[icalhit];
 	    
-	    hCALfadc_vs_ch_goodtrack->Fill( globalchan, fadc[icalhit] );
-	    hCALftime_vs_ch_goodtrack->Fill( globalchan, ftimting[icalhit] );
-	    
+	  	    
 	    int tmin = 30, tmax=45;
 	    if( globalchan == 19 ) tmin = 24;
 	    
@@ -4255,8 +3618,7 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
 	    }
 	  }
 
-	  hCALfadc_sum_goodtrack->Fill(fadcsum);
-
+	 
 	  CALOsum = fadcsum;
 
 	  int ngoodscint = 0;
@@ -4264,10 +3626,9 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
 	    if( tCH[itdc] < 10 && 110.0< ttiming[itdc] && ttiming[itdc] < 135.0 ){
 	      ngoodscint++;
 	    }
-	    hSCINT_tdc_vs_ch_goodtrack->Fill( tCH[itdc], ttiming[itdc] );
+	 
 	  }
 	  
-	  hNgoodScint_goodtrack->Fill( ngoodscint );
 	  
 	  NGOODSCINT = ngoodscint;
 	  
@@ -4275,45 +3636,8 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
 	
 	//for( int itrack=0; itrack<tracktemp.ntracks; itrack++ ){
 	for( int itrack=0; itrack<TMath::Min(tracktemp.ntracks,1); itrack++ ){
-	  hNhitspertrack->Fill( tracktemp.nhitsontrack[itrack] );
-	  hTrackChi2NDF->Fill( tracktemp.Chi2NDFtrack[itrack] );
-
-	  if( itrack == 0 ){ 
-	    TrackXp = tracktemp.Xptrack[itrack];
-	    TrackYp = tracktemp.Yptrack[itrack];
-	    TrackX = tracktemp.Xtrack[itrack];
-	    TrackY = tracktemp.Ytrack[itrack];
-
-	    TrackNhits = tracktemp.nhitsontrack[itrack];
-	    TrackChi2NDF = tracktemp.Chi2NDFtrack[itrack];
-
-	    for( int ilay=0; ilay<nlayers; ilay++ ){
-	      double xtracktemp = TrackX + zavg_layer[ilay]*TrackXp;
-	      double ytracktemp = TrackY + zavg_layer[ilay]*TrackYp;
-
-	      ( (TH2D*) (*hshouldhit_layer)[ilay] )->Fill( ytracktemp, xtracktemp );
-
-	      int nearest_module = get_nearest_module(tracktemp, ilay, itrack);
-
-	      if( nearest_module >= 0 && nearest_module < nmodules ){
-		( (TH2D*) (*hshouldhit_module)[nearest_module] )->Fill( ytracktemp - mod_y0[nearest_module],
-									xtracktemp - mod_x0[nearest_module] );
-
-		hNstripsX_module->Fill( ModData[nearest_module].xstrips.size(), nearest_module );
-		hNstripsY_module->Fill( ModData[nearest_module].ystrips.size(), nearest_module );
-
-		hNclust_module->Fill( mod_clusters[nearest_module].nclust2D, nearest_module );
-		
-	      }
-
-	      //Now HERE is where we should fill ADC type histograms:
-	      
-	      //To fill "should hit" histograms by module, we need to find the closest module in each layer
-	    }
-	  }
-
 	  
-	
+
 	  //Only fill residuals if we have all four layers firing (may help clarify the situation):
 	  //if( tracktemp.nhitsontrack[itrack] == 4 ){
 	  //&& tracktemp.Chi2NDFtrack[itrack] < 1000.0 ){
@@ -4323,13 +3647,7 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
 
 	    int iclust2D = tracktemp.hitlist_track[itrack][ihit];
 	    
-	    //	  if( tracktemp.nhitsontrack[itrack] == 4 && Nclustperlayer[layer] == 1 ){
-	    hTrackXresid_vs_layer->Fill( layer, -tracktemp.residx_hits[itrack][ihit] );
-	    hTrackYresid_vs_layer->Fill( layer, -tracktemp.residy_hits[itrack][ihit] );
-	    
-	    hTrackXresid_vs_module->Fill( module, -tracktemp.residx_hits[itrack][ihit] );
-	    hTrackYresid_vs_module->Fill( module, -tracktemp.residy_hits[itrack][ihit] );
-	    //}
+
 	    clusterdata_t clusttemp = mod_clusters[module];
 	    //Fill 2D cluster properties histograms IFF they are on tracks:
 
@@ -4387,213 +3705,17 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
 	      double utracktemp = trackpos_local.X()*mod_Pxu[module] + trackpos_local.Y()*mod_Pyu[module];
 	      double vtracktemp = trackpos_local.X()*mod_Pxv[module] + trackpos_local.Y()*mod_Pyv[module];
 
-	      tracktemp.eresidx_hits[itrack][ihit] = uhittemp - utracktemp;
-	      tracktemp.eresidy_hits[itrack][ihit] = vhittemp - vtracktemp;
 
-	      hTrackXeresid_vs_layer->Fill( layer, utracktemp - uhittemp ); //resid = utrack - uhit --> uhit = utrack - resid
-	      hTrackYeresid_vs_layer->Fill( layer, vtracktemp - vhittemp );
-
-	      hTrackXeresid_vs_module->Fill( module, utracktemp - uhittemp );
-	      hTrackYeresid_vs_module->Fill( module, vtracktemp - vhittemp );
-	      
-	    }
-
-	    hclustwidth_x_module->Fill( clusttemp.nstripx2D[iclust2D], module );
-	    hclustwidth_y_module->Fill( clusttemp.nstripy2D[iclust2D], module );
-
-	    hmaxtimebin_xstrip_module->Fill( ModData[module].isampmax_xstrips[clusttemp.ixstripmax[iclust2D]], module );
-	    hmaxtimebin_ystrip_module->Fill( ModData[module].isampmax_ystrips[clusttemp.iystripmax[iclust2D]], module );
-
-	    hADCasym_vs_module->Fill( module, clusttemp.dEclust2D[iclust2D]/(2.0*clusttemp.Eclust2D[iclust2D]) );
-	    hdT_vs_module->Fill( module, clusttemp.dtclust2D[iclust2D] );
-
-	    hADCsum_Xstrip_max_module->Fill( ModData[module].ADCsum_xstrips[clusttemp.ixstripmax[iclust2D]], module );
-	    hADCsum_Ystrip_max_module->Fill( ModData[module].ADCsum_ystrips[clusttemp.iystripmax[iclust2D]], module );
-
-	    hADCsampmax_Xstrip_module->Fill( ModData[module].ADCmax_xstrips[clusttemp.ixstripmax[iclust2D]], module );
-	    hADCsampmax_Ystrip_module->Fill( ModData[module].ADCmax_ystrips[clusttemp.iystripmax[iclust2D]], module );
-
-	    hADCsumXclust_module->Fill( clusttemp.totalchargex[iclust2D], module );
-	    hADCsumYclust_module->Fill( clusttemp.totalchargey[iclust2D], module );
-
-	    hADCprodXYstrip_max_module->Fill( sqrt(ModData[module].ADCsum_xstrips[clusttemp.ixstripmax[iclust2D]]*
-						   ModData[module].ADCsum_ystrips[clusttemp.iystripmax[iclust2D]] ), module );
-	    hADCprodXYsamp_max_module->Fill( sqrt(ModData[module].ADCmax_xstrips[clusttemp.ixstripmax[iclust2D]]*
-						  ModData[module].ADCmax_ystrips[clusttemp.iystripmax[iclust2D]] ), module );
-	    hADCprodXYclust_module->Fill( sqrt( clusttemp.totalchargex[iclust2D]*clusttemp.totalchargey[iclust2D] ), module );
-
-	    hStrip_maxcor_module->Fill( clusttemp.CorrCoeffMaxStrips[iclust2D], module );
-	    hClust_corr_module->Fill( clusttemp.CorrCoeff2D[iclust2D], module );
+	    } 
 	    
-	  
-	    hClust2D_ADCXvsY->Fill( clusttemp.totalchargex[clusttemp.ixclust2D[iclust2D]],
-				    clusttemp.totalchargey[clusttemp.iyclust2D[iclust2D]] );
-	    hClust2D_T0XvsY->Fill( clusttemp.txmean[clusttemp.ixclust2D[iclust2D]],
-				   clusttemp.tymean[clusttemp.iyclust2D[iclust2D]] );
-	    hClust2D_ADCdiff->Fill( clusttemp.dEclust2D[iclust2D] );
-	    hClust2D_Tdiff->Fill( clusttemp.dtclust2D[iclust2D] );
-	    hClust2D_ADCasym->Fill( clusttemp.dEclust2D[iclust2D]/(2.0*clusttemp.Eclust2D[iclust2D]) );
-	    hClust2D_ADCasym_vs_ADCavg->Fill( sqrt( clusttemp.totalchargex[clusttemp.ixclust2D[iclust2D]]*
-						    clusttemp.totalchargey[clusttemp.iyclust2D[iclust2D]] ),
-					      clusttemp.dEclust2D[iclust2D]/(2.0*clusttemp.Eclust2D[iclust2D]) );
-	    hClust2D_ADCdiff_vs_ADCavg->Fill( clusttemp.Eclust2D[iclust2D], clusttemp.dEclust2D[iclust2D] );
-	    
-	    hClust_corr->Fill( clusttemp.CorrCoeff2D[iclust2D] );
-	    hStrip_maxcor->Fill( clusttemp.CorrCoeffMaxStrips[iclust2D] );
-	    
-	    hClust2D_NstripXvsNstripY->Fill( clusttemp.nstripy2D[iclust2D], clusttemp.nstripx2D[iclust2D] );
+	   
+	  }      
 
-	    hADCsumXclust_max->Fill( clusttemp.totalchargex[clusttemp.ixclust2D[iclust2D]] );
-	    hADCsumYclust_max->Fill( clusttemp.totalchargey[clusttemp.iyclust2D[iclust2D]] );
 
-	    hADCsumXstrip_max->Fill( ModData[module].ADCsum_xstrips[clusttemp.ixstripmax[clusttemp.ixclust2D[iclust2D]]] );
-	    hADCsumYstrip_max->Fill( ModData[module].ADCsum_ystrips[clusttemp.iystripmax[clusttemp.iyclust2D[iclust2D]]] );
-
-	    for( int isamp=0; isamp<6; isamp++ ){
-	      hADCsampXstrip_max->Fill( isamp, ModData[module].ADCsamp_xstrips[clusttemp.ixstripmax[clusttemp.ixclust2D[iclust2D]]][isamp] );
-	      hADCsampYstrip_max->Fill( isamp, ModData[module].ADCsamp_ystrips[clusttemp.iystripmax[clusttemp.iyclust2D[iclust2D]]][isamp] );
-
-	      hADCsampXclust->Fill( isamp, clusttemp.ADCsamp_xclust[iclust2D][isamp] );
-	      hADCsampYclust->Fill( isamp, clusttemp.ADCsamp_yclust[iclust2D][isamp] );
-	    }
-
-	    hADCsampmax_Xstrip->Fill( ModData[module].ADCsamp_xstrips[clusttemp.ixstripmax[clusttemp.ixclust2D[iclust2D]]][ModData[module].isampmax_xstrips[clusttemp.ixstripmax[clusttemp.ixclust2D[iclust2D]]]] );
-	    hADCsampmax_Ystrip->Fill( ModData[module].ADCsamp_ystrips[clusttemp.iystripmax[clusttemp.iyclust2D[iclust2D]]][ModData[module].isampmax_ystrips[clusttemp.iystripmax[clusttemp.iyclust2D[iclust2D]]]] );
-
-	    hADCprodXYstrip_max->Fill( sqrt( ModData[module].ADCsum_xstrips[clusttemp.ixstripmax[clusttemp.ixclust2D[iclust2D]]] * 
-					     ModData[module].ADCsum_ystrips[clusttemp.iystripmax[clusttemp.iyclust2D[iclust2D]]] ) );
-	    hADCprodXYsamp_max->Fill( sqrt( ModData[module].ADCsamp_xstrips[clusttemp.ixstripmax[clusttemp.ixclust2D[iclust2D]]][ModData[module].isampmax_xstrips[clusttemp.ixstripmax[clusttemp.ixclust2D[iclust2D]]]] *
-					    ModData[module].ADCsamp_ystrips[clusttemp.iystripmax[clusttemp.iyclust2D[iclust2D]]][ModData[module].isampmax_ystrips[clusttemp.iystripmax[clusttemp.iyclust2D[iclust2D]]]] ) );
-
-	    hADCprodXYcluster->Fill( sqrt( clusttemp.totalchargex[clusttemp.ixclust2D[iclust2D]]*
-					   clusttemp.totalchargey[clusttemp.iyclust2D[iclust2D]] ) );
-
-	    //loop over strips in cluster and fill strip deltaT histograms:
-	    for( int ixstrip=clusttemp.ixstriplo[clusttemp.ixclust2D[iclust2D]]; ixstrip<=clusttemp.ixstriphi[clusttemp.ixclust2D[iclust2D]]; ixstrip++ ){
-	      if( ModData[module].Tmean_xstrips.find( ixstrip ) != ModData[module].Tmean_xstrips.end() ){
-		hStrip_dT->Fill( ModData[module].Tmean_xstrips[ixstrip] - clusttemp.tclust2D[iclust2D] );
-		hStrip_dT_vs_ADCsum->Fill( ModData[module].ADCsum_xstrips[ixstrip], ModData[module].Tmean_xstrips[ixstrip] - clusttemp.tclust2D[iclust2D] );
-
-		hStrip_dTwalkcor->Fill( ModData[module].Tmean_xstrips_walkcor[ixstrip] - clusttemp.tclust2Dwalkcorr[iclust2D] );
-		hStrip_dTwalkcor_vs_ADC->Fill( ModData[module].ADCsum_xstrips[ixstrip], ModData[module].Tmean_xstrips_walkcor[ixstrip] - clusttemp.tclust2Dwalkcorr[iclust2D] );
-
-		// hStrip_Tfit->Fill( ModData[module].Tfit_xstrips[ixstrip] );
-		// hStrip_TfitX->Fill( ModData[module].Tfit_xstrips[ixstrip] );
-
-		// hStrip_Afit->Fill( ModData[module].Afit_xstrips[ixstrip] );
-		// hStrip_taufit->Fill( ModData[module].taufit_xstrips[ixstrip]);
-		
-	      }
-	    }
-
-	    //loop over strips in cluster and fill strip deltaT histograms:
-	    for( int iystrip=clusttemp.iystriplo[clusttemp.iyclust2D[iclust2D]]; iystrip<=clusttemp.iystriphi[clusttemp.iyclust2D[iclust2D]]; iystrip++ ){
-	      if( ModData[module].Tmean_ystrips.find( iystrip ) != ModData[module].Tmean_ystrips.end() ){
-		hStrip_dT->Fill( ModData[module].Tmean_ystrips[iystrip] - clusttemp.tclust2D[iclust2D] );
-		hStrip_dT_vs_ADCsum->Fill( ModData[module].ADCsum_ystrips[iystrip], ModData[module].Tmean_ystrips[iystrip] - clusttemp.tclust2D[iclust2D] );
-
-		hStrip_dTwalkcor->Fill( ModData[module].Tmean_ystrips_walkcor[iystrip] - clusttemp.tclust2Dwalkcorr[iclust2D] );
-		hStrip_dTwalkcor_vs_ADC->Fill( ModData[module].ADCsum_ystrips[iystrip], ModData[module].Tmean_ystrips_walkcor[iystrip] - clusttemp.tclust2Dwalkcorr[iclust2D] );
-
-		// hStrip_Tfit->Fill( ModData[module].Tfit_ystrips[iystrip] );
-		// hStrip_TfitY->Fill( ModData[module].Tfit_ystrips[iystrip] );
-
-		// hStrip_Afit->Fill( ModData[module].Afit_ystrips[iystrip] );
-		// hStrip_taufit->Fill( ModData[module].taufit_ystrips[iystrip]);
-		
-	      }
-	    }
-	    
-	    if( itrack == 0 ){ //set tree output variables:
-
-	      HitModule[ihit] = module;
-	      HitLayer[ihit] = layer;
-	    
-	      HitXlocal[ihit] = clusttemp.xclust2Dcorr[iclust2D];
-	      HitYlocal[ihit] = clusttemp.yclust2Dcorr[iclust2D];
-	      HitXresid[ihit] = tracktemp.residx_hits[itrack][ihit];
-	      HitYresid[ihit] = tracktemp.residy_hits[itrack][ihit];
-	      HitXresidE[ihit] = tracktemp.eresidx_hits[itrack][ihit];
-	      HitYresidE[ihit] = tracktemp.eresidy_hits[itrack][ihit];
-
-	      // //re-compute global coordinates:
-	      // TVector3 hitpos_local( HitXlocal[ihit], HitYlocal[ihit], 0.0 );
-
-	      // TRotation R;
-	      // //Order of the rotations affects results somewhat because rotations don't commute. But
-	      // // if they are sufficiently small, they are almost independent:
-	      // R.RotateX(mod_ax[module]);
-	      // R.RotateY(mod_ay[module]);
-	      // R.RotateZ(mod_az[module]);
-
-	      // TVector3 modulecenter_global( mod_x0[module], mod_y0[module], mod_z0[module] );
-	      // TVector3 hitpos_global = R * hitpos_local + modulecenter_global;
-
-	      TVector3 hitpos_global( clusttemp.xglobal2D[iclust2D],
-				      clusttemp.yglobal2D[iclust2D],
-				      clusttemp.zglobal2D[iclust2D] );
-	      
-	      HitXglobal[ihit] = hitpos_global.X();
-	      HitYglobal[ihit] = hitpos_global.Y();
-	      HitZglobal[ihit] = hitpos_global.Z();
-
-	      HitXmom[ihit] = clusttemp.xmom2D[iclust2D];
-	      HitYmom[ihit] = clusttemp.ymom2D[iclust2D];
-	      
-	      //if there IS a hit: fill "did hit" histos with TRACK coordinates, not hit coordinates, to avoid bin migration effects:
-	      
-	      //( (TH2D*) (*hdidhit_layer)[layer] )->Fill( HitYglobal[ihit], HitXglobal[ihit] );
-
-	      //Need to fill this with identical coordinates to how "should hit" is done to avoid bin migration effects:
-	      ( (TH2D*) (*hdidhit_layer)[layer] )->Fill( TrackY + zavg_layer[layer]*TrackYp,
-							 TrackX + zavg_layer[layer]*TrackXp );
-	      
-	      ( (TH2D*) (*hxyhit_layer)[layer] )->Fill( HitYglobal[ihit], HitXglobal[ihit] );
-	      
-	      HitSigX[ihit] = clusttemp.xsigma[clusttemp.ixclust2D[iclust2D]];
-	      HitSigY[ihit] = clusttemp.ysigma[clusttemp.iyclust2D[iclust2D]];
-	      HitADCX[ihit] = clusttemp.totalchargex[clusttemp.ixclust2D[iclust2D]];
-	      HitADCY[ihit] = clusttemp.totalchargey[clusttemp.iyclust2D[iclust2D]];
-	      HitADCasym[ihit] = clusttemp.dEclust2D[iclust2D]/(2.0*clusttemp.Eclust2D[iclust2D]);
-	      HitTmean[ihit] = clusttemp.tclust2D[iclust2D];
-	      HitdT[ihit] = clusttemp.dtclust2D[iclust2D];
-	      HitCorrCoeff[ihit] = clusttemp.CorrCoeff2D[iclust2D];
-	      StripMaxCorrCoeff[ihit] = clusttemp.CorrCoeffMaxStrips[iclust2D];
-	      HitNstripX[ihit] = clusttemp.nstripx2D[iclust2D];
-	      HitNstripY[ihit] = clusttemp.nstripy2D[iclust2D];
-
-	      hClust2D_Xmom_vs_NstripX->Fill( HitNstripX[ihit], HitXmom[ihit] );
-	      hClust2D_Ymom_vs_NstripY->Fill( HitNstripY[ihit], HitYmom[ihit] );
-
-	      ( (TH2D*) (*hxyhit_module)[module] )->Fill( HitYlocal[ihit], HitXlocal[ihit] );
-	      
-	      //To get a proper efficiency numerator, we need this check:
-
-	      //if( get_nearest_module( tracktemp, layer, itrack ) == module ){
-	      //this check shouldn't be needed any more, since get_nearest_module(track,layer) always defaults to the module with a hit
-	      // if the hit actually occurred.
-	      
-	      ( (TH2D*) (*hdidhit_module)[module] )->Fill( TrackY + zavg_layer[layer]*TrackYp - mod_y0[module],
-							   TrackX + zavg_layer[layer]*TrackXp - mod_x0[module] );
-	      //}
-	    }
-	  }
-      
-
-	  hTrackXY->Fill( tracktemp.Ytrack[itrack],tracktemp.Xtrack[itrack] );
-	  hTrackXp->Fill( tracktemp.Xptrack[itrack] );
-	  hTrackYp->Fill( tracktemp.Yptrack[itrack] );
 	}
       }
 
-      hNtracks_nocuts->Fill( tracktemp.ntracks );
-      if( CALOsum > 5500.0 && NGOODSCINT >= 2 ){
-	hNtracks_GoodScintAndCALO->Fill( tracktemp.ntracks );
-      }
       
-      if( tracktemp.ntracks > 0 ){
-	Tout->Fill();
-      }
       
       if( eventdisplaymode != 0 ){
 
@@ -4827,31 +3949,7 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
 	    
 	  }
 	}
-	// hframe1->SetMinimum(0);
-	// hframe2->SetMinimum(0);
-	// hframe3->SetMinimum(0);
-	// hframe4->SetMinimum(0);
 
-	// hframe1->SetMaximum(20000);
-	// hframe2->SetMaximum(20000);
-	// hframe3->SetMaximum(20000);
-	// hframe4->SetMaximum(20000);
-	
-	// c1->SetGrid();
-	// c1->cd(1)->Clear();
-	// hframe1->Draw("colz");
-	// gPad->Modified();
-	// gPad->Update();
-	// c1->cd(2)->Clear();
-	// hframe2->Draw("colz");
-	// gPad->Modified();
-	// gPad->Update();
-	// c1->cd(3)->Clear();
-	// hframe3->Draw("colz");
-	// gPad->Modified();
-	// gPad->Update();
-	// c1->cd(4)->Clear();
-	// hframe4->Draw("colz");
 	gPad->Modified();
 	gPad->Update();
 	c1->Update();
@@ -4972,13 +4070,19 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
 	  
 	}
 	gSystem->ProcessEvents();
-      
+	/*
 	cout << "press any key to continue (q to quit):" << endl;
 	TString reply;
 	reply.ReadLine(cin,kFALSE);
 
 	if( reply.BeginsWith("q") ) break;
+	*/
+	n_saved++;
+	if(n_saved == 1) c_proj->Print("./output/" + outfilename + ".pdf(");
+	else if(n_saved == nevents_save) c_proj->Print("./output/" + outfilename + ".pdf)");
+	else c_proj->Print("./output/" + outfilename + ".pdf");
 	
+
       }
 	  
 	  
@@ -4988,67 +4092,15 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
 	  
 	  
     } else {
-      hNtracks_nocuts->Fill( 0 );
-      if( CALOsum >= 5500.0 && NGOODSCINT >= 2 ){
-	hNtracks_GoodScintAndCALO->Fill( 0 );
-      }
+      
     }
 
     
   
-
-    for( int ilayer=0; ilayer<nlayers; ilayer++ ){
-      // if( NstripX_layer[ilayer] > 0 ){
-      hNclustX_layer->Fill( NclustX_layer[ilayer], ilayer );
-	//}
-      //if( NstripY_layer[ilayer] > 0 ){
-      hNclustY_layer->Fill( NclustY_layer[ilayer], ilayer );
-	//}
-    }
-  
-    
-      
-
-    // if( eventdisplaymode != 0 ){
-
-      
-    // }
-  }
-
-  //form efficiency histograms:
-  TClonesArray *heff_layer = new TClonesArray("TH2D",nlayers);
-  
-  for( int ilay=0; ilay<nlayers; ilay++ ){
-    TString histname;
-
-    TH2D *htemp = ( (TH2D*) (*hdidhit_layer)[ilay] );
-    new( (*heff_layer)[ilay] ) TH2D( *htemp );
-
-    ( (TH2D*) (*heff_layer)[ilay] )->SetName( histname.Format( "heff_layer%d", ilay ) );
-    ( (TH2D*) (*heff_layer)[ilay] )->SetTitle( histname.Format( "Track-based efficiency, layer %d", ilay ) );
-    
-    ( (TH2D*) (*heff_layer)[ilay] )->Divide( (TH2D*) (*hshouldhit_layer)[ilay] );
-  }	 
-  
-  //  hframe_layers->Delete();
-
-  TClonesArray *heff_module = new TClonesArray("TH2D",nmodules);
-
-  for( int imod=0; imod<nmodules; imod++ ){
-    TString histname;
-
-    TH2D *htemp = ( (TH2D*) (*hdidhit_module)[imod] );
-    new( (*heff_module)[imod] ) TH2D( *htemp );
-    
-    ( (TH2D*) (*heff_module)[imod] )->SetName( histname.Format( "heff_module%d", imod ) );
-    ( (TH2D*) (*heff_module)[imod] )->SetTitle( histname.Format( "Track-based efficiency, module %d", imod ) );
-    
-    ( (TH2D*) (*heff_module)[imod] )->Divide( (TH2D*) (*hshouldhit_module)[imod] ); //
-    //Fix ROOT's 
     
   }
-  
-  fout->Write();
+
+   
   
   auto program_end = high_resolution_clock::now();
   
@@ -5061,774 +4113,3 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
   cout<<"fraction of time spent in track-finding: "<<((double)totalTime.count()/(double)program_time.count())<<endl;
 }
 
-
-
-
-// void find_clusters_by_module_old( moduledata_t mod_data, clusterdata_t &clust_data ){
-
-//   filter_strips_by_module( mod_data, 0.3 );
-  
-//   //Build clusters from contiguous groups of x and y strips:
-
-//   //Look for local maxima within contiguous groups of strips and fit template functions:
-  
-//   int module = mod_data.modindex;
-//   int layer = mod_data.layerindex;
-  
-//   int nlocalmaxima=0;
-//   int ncontiguous=0, laststrip=-1;
-//   int striplo=-1, striphi=-1;
-//   vector<int> stripmax;
-//   vector<int> sampmax;
-//   //vector<int> localmaxstrips;
-  
-//   //int maxstrip=-1;
-//   double ADCmaxclust = 0.0;
-//   int stripmaxclust = -1;
-//   int sampmaxclust = -1;
-  
-  
-//   int nclustx=0,nclusty=0;
-
-//   //vectors of cluster properties:
-//   vector<int> nstripxclust,nstripyclust,ixstriplo,ixstriphi,iystriplo,iystriphi,ixstripmax,iystripmax;
-//   vector<double> xmean, xsigma, totalchargex, txmean, txsigma;
-//   vector<double> ymean, ysigma, totalchargey, tymean, tysigma;
-
-//   //  vector<int> nhitclust;
-//   //"Hit" fit results:
-//   int nhitx1D=0;
-//   vector<int> clustidx_xhit;
-//   vector<double> x0hit1D, tx0hit1D, Axhit1D, chi2ndf_hitX1D, sigx0hit1D, taux0hit1D;
-
-//   int nhity1D=0;
-//   vector<int> clustidx_yhit;
-//   vector<double> y0hit1D, ty0hit1D, Ayhit1D, chi2ndf_hitY1D, sigy0hit1D, tauy0hit1D;
-
-//   map<int,vector<double> > ADCsample_clust; //mapped by strip
-  
-//   double xsum=0.0, x2sum=0.0, tsum=0.0, t2sum=0.0, ADCsum=0.0;
-//   double ysum=0.0, y2sum=0.0;
-
-//   map<int,map<int,bool> > islocalmax; //mapped by strip/sample:
-//   map<int,bool> isclustermax; 
-  
-//   for( set<int>::iterator ixstrip=mod_data.xstrips_filtered.begin(); ixstrip != mod_data.xstrips_filtered.end(); ++ixstrip ){
-//     int strip=*ixstrip;
-
-//     // if( fabs( mod_data.Tmean_xstrips[strip] - 64.3 )<=3.0*16.3 &&
-//     // 	fabs( mod_data.Tsigma_xstrips[strip] - 36.3) <=3.0*5.8 ){
-  
-//     double xcoord_local = (strip+0.5 - 0.5*nstripsx)*0.4;
-//     double ADCval = mod_data.ADCsum_xstrips[strip];
-//     double tval  = mod_data.Tmean_xstrips[strip];
-
-//     //  int stripleft=strip-1,stripright=strip+1;
-//     // isclustermax[strip] = false;
-   
-//     if( laststrip < 0 || strip > laststrip+1 ||
-// 	(strip-striplo+1 > maxnstripspercluster && strip-stripmaxclust > 1 ) ){ //new cluster:
-//       if( laststrip >= 0 ){ //not the first cluster: add current cluster to the array before resetting sums:
-// 	nstripxclust.push_back( ncontiguous );
-// 	ixstriplo.push_back( striplo );
-// 	ixstriphi.push_back( striphi );
-// 	ixstripmax.push_back( stripmaxclust );
-// 	xmean.push_back( xsum/ADCsum );
-// 	xsigma.push_back( sqrt(fabs( x2sum/ADCsum - pow(xsum/ADCsum,2))) );
-// 	totalchargex.push_back( ADCsum );
-// 	txmean.push_back( tsum/ADCsum );
-// 	txsigma.push_back( sqrt(fabs( t2sum/ADCsum - pow(tsum/ADCsum,2))));
-
-// 	//set up and execute hit template fit:
-// 	vector<double> xtemp,ytemp,ztemp;
-// 	vector<double> extemp,eytemp,eztemp;
-// 	//double Amaxtemp=0.0, tmaxtemp;
-// 	map<int,double> Amaxstriptemp;
-// 	map<int,double> tmaxstriptemp;
-
-// 	//	  nlocalmaxima = 1;
-	  
-// 	nlocalmaxima=0;
-	 
-// 	//	  islocalmax.clear();
-// 	stripmax.clear();
-// 	sampmax.clear();
-
-// 	// if( isclustermax[istripclust] ){
-// 	stripmax.push_back( stripmaxclust );
-// 	sampmax.push_back( sampmaxclust );
-	 
-// 	for( int istripclust=striplo; istripclust<=striphi; istripclust++ ){
-		
-// 	  //    Amaxstriptemp[istripclust] = 0.0;
-// 	  // tmaxstriptemp[istripclust] = 0.0;
-
-// 	  // if ANY local maximum occurs in this strip for any sample, increment the number of local maxima/hits:
-// 	  //   if( islocalmax.find(istripclust) != islocalmax.end() ){
-// 	  //  nlocalmaxima++;
-// 	  //  stripmax.push_back( istripclust );
-// 	  //}
-
-	      
-// 	  for( int isamp=0; isamp<6; isamp++ ){
-// 	    xtemp.push_back( (istripclust+0.5 - 0.5*nstripsx)*0.4 ); //local X coordinate
-// 	    ytemp.push_back( 12.5+25.0*isamp ); //center of time bin
-// 	    ztemp.push_back( mod_data.ADCsamp_xstrips[istripclust][isamp] ); //ADC value for this sample:
-
-// 	    //"Errors": 
-// 	    extemp.push_back( 0.0 ); //0.25 * strip pitch (rough guess)
-// 	    eytemp.push_back( 0.0 ); //0.25 * time bin width (rough guess)
-// 	    eztemp.push_back( sigmasample ); //individual sample noise width (rough guess).
-
-	      
-	      
-// 	    // if( mod_data.ADCsamp_xstrips[istripclust][isamp] > Amaxstriptemp[istripclust] ){
-		
-// 	    // 	Amaxstriptemp[istripclust] = mod_data.ADCsamp_xstrips[istripclust][isamp];
-// 	    // 	tmaxstriptemp[istripclust] = 12.5+25.0*isamp;
-
-// 	    // 	//if( Amaxstriptemp[istripclust] > ADCmaxtemp ) {
-// 	    // 	//  ADCmaxtemp = Amaxstriptemp[istripclust];
-// 	    // 	//  istripmax[nlocalmaxima-1] = istripclust;
-// 	    // 	//}
-// 	    // }
-
-// 	    // if( mod_data.ADCsamp_xstrips[istripclust][isamp] > ADCmaxtemp ){
-// 	    // 	ADCmaxtemp = mod_data.ADCsamp_xstrips[istripclust][isamp];
-// 	    // 	stripmaxtemp = istripclust;
-// 	    // }
-
-// 	    double ADCleft = 0.0, ADCright=0.0, ADCnext=0.0, ADCprev=0.0;
-// 	    if( istripclust > striplo ) ADCleft = mod_data.ADCsamp_xstrips[istripclust-1][isamp];
-// 	    if( istripclust < striphi ) ADCright = mod_data.ADCsamp_xstrips[istripclust+1][isamp];
-// 	    if( isamp > 0 ) ADCprev = mod_data.ADCsamp_xstrips[istripclust][isamp-1];
-// 	    if( isamp < 5 ) ADCnext = mod_data.ADCsamp_xstrips[istripclust][isamp+1];
-	      
-// 	    //check for an additional local maximum in any of these samples with nsigma "prominence":
-// 	    if( mod_data.ADCsamp_xstrips[istripclust][isamp] > ADCleft + sigmasample*localmaxthreshold_nsigma &&
-// 		mod_data.ADCsamp_xstrips[istripclust][isamp] > ADCright + sigmasample*localmaxthreshold_nsigma &&
-// 		mod_data.ADCsamp_xstrips[istripclust][isamp] > ADCprev + sigmasample*localmaxthreshold_nsigma &&
-// 		mod_data.ADCsamp_xstrips[istripclust][isamp] > ADCnext + sigmasample*localmaxthreshold_nsigma &&
-// 		( abs( istripclust - stripmaxclust ) > 1 || abs( isamp - sampmaxclust ) > 1 ) &&
-// 		stripmax.size() < maxnhitspercluster ){
-// 	      stripmax.push_back( istripclust );
-// 	      sampmax.push_back( isamp );
-// 	    }
-	      
-// 	  } 
-// 	}
-	  
-// 	nlocalmaxima = stripmax.size();
-	  
-// 	TGraph2DErrors *gtemp = new TGraph2DErrors( xtemp.size(),
-// 						    &(xtemp[0]), &(ytemp[0]), &(ztemp[0]),
-// 						    &(extemp[0]), &(eytemp[0]), &(eztemp[0]) );
-
-// 	int nfreeparamperhit = 5;
-// 	if( varyclustersigma == 0 ) nfreeparamperhit--;
-// 	if( varyclustertau   == 0 ) nfreeparamperhit--;
-	  
-// 	//We assume that the number of hits involved in the cluster is equal to the number of local maxima in the cluster occuring in unique strips:
-// 	//We probably need to be smarter than this:
-// 	int ndftemp = xtemp.size() - nfreeparamperhit*nlocalmaxima;
-
-// 	if( ndftemp > 0 && fittemplatefunctions != 0 ){
-// 	  HitFunc->FixParameter(0,TMath::Min(double(maxnhitspercluster),double(nlocalmaxima)));
-// 	  for( int ihittemp=0; ihittemp<TMath::Min(nlocalmaxima,maxnhitspercluster); ihittemp++ ){
-// 	    HitFunc->ReleaseParameter(5*ihittemp+1);
-// 	    HitFunc->ReleaseParameter(5*ihittemp+2);
-// 	    HitFunc->ReleaseParameter(5*ihittemp+3);
-// 	    HitFunc->ReleaseParameter(5*ihittemp+4);
-// 	    HitFunc->ReleaseParameter(5*ihittemp+5);
-
-// 	    //	      for( int ihittemp=0; ihittemp<maxnhitspercluster; ihittemp++ ){
-// 	    HitFunc->SetParLimits(5*ihittemp+1,0.0,100000.0);
-// 	    HitFunc->SetParLimits(5*ihittemp+3,-300.0,450.0);
-// 	    HitFunc->SetParLimits(5*ihittemp+4,0.0,100.0); //mm
-// 	    HitFunc->SetParLimits(5*ihittemp+5,0.0,300.0);
-
-	      
-// 	    HitFunc->SetParameter(5*ihittemp+1, mod_data.ADCmax_xstrips[stripmax[ihittemp]] );
-// 	    HitFunc->SetParameter(5*ihittemp+2, (stripmax[ihittemp]+0.5-0.5*nstripsx)*0.4 );
-// 	    if( striplo == striphi ){ //only one strip; fix position and "sigma":
-// 	      HitFunc->FixParameter(5*ihittemp+2, (stripmax[ihittemp]+0.5-0.5*nstripsx)*0.4 );
-// 	      HitFunc->FixParameter(5*ihittemp+4, clustersigma );
-// 	    }
-// 	    HitFunc->SetParameter(5*ihittemp+3, 12.5+25.0*sampmax[ihittemp]);
-// 	    HitFunc->SetParameter(5*ihittemp+4, clustersigma );
-// 	    HitFunc->SetParameter(5*ihittemp+5, clustertau );
-// 	    if( varyclustersigma == 0 ) HitFunc->FixParameter( 5*ihittemp+4,clustersigma );
-// 	    if( varyclustertau   == 0 ) HitFunc->FixParameter( 5*ihittemp+5,clustertau   ); 
-// 	  }
-
-// 	  for( int ihittemp=nlocalmaxima; ihittemp<maxnhitspercluster; ihittemp++ ){
-// 	    HitFunc->FixParameter( 5*ihittemp+1, 0.0 );
-// 	    HitFunc->FixParameter( 5*ihittemp+2, 0.0 );
-// 	    HitFunc->FixParameter( 5*ihittemp+3, 0.0 );
-// 	    HitFunc->FixParameter( 5*ihittemp+4, 1.0 );
-// 	    HitFunc->FixParameter( 5*ihittemp+5, 1.0 );
-// 	  }
-
-// 	  TFitResultPtr fitresult = gtemp->Fit( HitFunc, "S0Q", "" );
-
-// 	  if( fitresult->IsValid() ){
-	    
-// 	    // cout << "successful fit to hit template function, nlocalmaxima = " << nlocalmaxima << endl;
-
-// 	    //cout << "successful fit of hit template function to X strip data, nhits = " << nlocalmaxima << endl;
-
-
-// 	    int ihitglobal=nhitx1D;
-	      
-// 	    nhitx1D += nlocalmaxima;
-	      
-// 	    for( int ihittemp=0; ihittemp<nlocalmaxima; ihittemp++ ){
-// 	      x0hit1D.push_back( HitFunc->GetParameter( 5*ihittemp+2 ) );
-// 	      tx0hit1D.push_back( HitFunc->GetParameter( 5*ihittemp+3 ) );
-// 	      Axhit1D.push_back( HitFunc->GetParameter( 5*ihittemp+1 ) );
-// 	      chi2ndf_hitX1D.push_back( fitresult->Chi2()/fitresult->Ndf() );
-// 	      sigx0hit1D.push_back( HitFunc->GetParameter( 5*ihittemp+4 ) );
-// 	      taux0hit1D.push_back( HitFunc->GetParameter( 5*ihittemp+5 ) );
-
-// 	      clustidx_xhit.push_back( nclustx );
-		
-// 	      // cout << "strip lo, strip hi = " << striplo << ", " << striphi << endl;
-// 	      // cout << "Hit " << ihittemp << ", (A,x0,t0,sigma,tau)=("
-// 	      //      << Axhit1D[ihitglobal+ihittemp] << ", "
-// 	      //      << x0hit1D[ihitglobal+ihittemp] << ", "
-// 	      //      << tx0hit1D[ihitglobal+ihittemp] << ", "
-// 	      //      << sigx0hit1D[ihitglobal+ihittemp] << ", "
-// 	      //      << taux0hit1D[ihitglobal+ihittemp] << "), chi2/ndf = "
-// 	      //      << chi2ndf_hitX1D[ihitglobal+ihittemp] << endl;
-		  
-// 	    }
-	      
-// 	  }
-
-// 	}
-
-// 	gtemp->Delete();
-	  
-// 	// cout << "Adding new x cluster, xmean = "
-// 	//      << xmean[nclustx] << " mm, xsigma = "
-// 	//      << xsigma[nclustx] << " mm, tmean = "
-// 	//      << txmean[nclustx] << " ns, tsigma = "
-// 	//      << txsigma[nclustx] << " ns, ADC sum = "
-// 	//      << totalchargex[nclustx] << ", nstrips = "
-// 	//      << nstripxclust[nclustx] << ", nlocalmaxima = "
-// 	//      << nlocalmaxima << endl;
-
-// 	//ADCsample_clust.clear();
-// 	stripmax.clear();
-// 	//islocalmax.clear();
-	  
-// 	nclustx++;
-//       }
-
-//       //copy ADC samples to the array for hit template fitting:
-//       //ADCsample_clust[strip] = mod_data.ADCsamp_xstrips[strip];
-	
-//       ADCsum = ADCval;
-//       xsum = xcoord_local*ADCval;
-//       x2sum = pow(xcoord_local,2)*ADCval;
-//       tsum = tval*ADCval;
-//       t2sum = pow(tval,2)*ADCval;
-	
-//       ncontiguous = 1;
-
-//       nlocalmaxima = 1;
-//       striplo = strip;
-//       striphi = strip;
-//       //isclustermax[strip] = true;
-
-//       stripmaxclust = strip;
-//       ADCmaxclust = mod_data.ADCmax_xstrips[strip];
-//       sampmaxclust = mod_data.isampmax_xstrips[strip];
-//     } else { //strip = laststrip+1: Add to existing cluster:
-	
-//       ADCsum += ADCval;
-//       xsum += xcoord_local*ADCval;
-//       x2sum += pow(xcoord_local,2)*ADCval;
-//       tsum += tval*ADCval;
-//       t2sum += pow(tval,2)*ADCval;
-
-//       // if( ADCval > ADCmax ){
-//       //   if( strip > stripmax[nlocalmaxima-1]+1 ){
-//       //     nlocalmaxima++;
-//       //     stripmax.push_back( strip );
-//       //   } else {
-//       //     stripmax[nlocalmaxima-1] = strip;
-//       //   }
-//       //   ADCmax = ADCval;
-//       // }
-
-//       // if( ADCval > ADCmax ){
-//       //   ADCmax = ADCval;
-//       //   stripmax[nlocalmaxima-1] = strip;
-//       // }
-
-//       if( mod_data.ADCmax_xstrips[strip] > ADCmaxclust ){
-// 	ADCmaxclust = mod_data.ADCmax_xstrips[strip];
-// 	sampmaxclust = mod_data.isampmax_xstrips[strip];
-// 	stripmaxclust = strip;
-// 	//isclustermax[strip]=true;
-// 	//isclustermax[laststrip] = false;
-//       }
-	
-//       striphi=strip;
-	
-//       ncontiguous++;
-//     }
-//     laststrip = strip;
-//   }
-  
-
-//   clust_data.nclustx = nclustx;
-//   clust_data.nstripx = nstripxclust;
-//   clust_data.ixstriplo = ixstriplo;
-//   clust_data.ixstriphi = ixstriphi;
-//   clust_data.ixstripmax = ixstripmax;
-//   clust_data.xmean = xmean;
-//   clust_data.xsigma = xsigma;
-//   clust_data.totalchargex = totalchargex;
-//   clust_data.txmean = txmean;
-//   clust_data.txsigma = txsigma;
-
-//   clust_data.nhitx1D = nhitx1D;
-//   clust_data.clustidx_xhit = clustidx_xhit;
-//   clust_data.x0hit1D = x0hit1D;
-//   clust_data.tx0hit1D = tx0hit1D;
-//   clust_data.Axhit1D = Axhit1D;
-//   clust_data.chi2ndf_hitx1D = chi2ndf_hitX1D;
-//   clust_data.sigx0hit1D = sigx0hit1D;
-//   clust_data.taux0hit1D = taux0hit1D;
-  
-//   laststrip = -1;
-
-//   ncontiguous = 0;
-
-//   striplo=-1; striphi=-1;
-
-//   ADCmaxclust = 0.0;
-//   stripmaxclust = -1;
-//   sampmaxclust = -1;
-  
-//   tsum=0.0;
-//   t2sum=0.0;
-//   ADCsum=0.0;
-//   ysum=0.0;
-//   y2sum=0.0;
-
-//   islocalmax.clear();
-  
-//   for( set<int>::iterator iystrip=mod_data.ystrips_filtered.begin(); iystrip != mod_data.ystrips_filtered.end(); ++iystrip ){
-//     int strip=*iystrip;
-
-//     // if( fabs( mod_data.Tmean_ystrips[strip] - 64.3 )<=3.0*16.3 &&
-//     // 	fabs( mod_data.Tsigma_ystrips[strip] - 36.3) <=3.0*5.8 ){
-
-//     double ycoord_local = (strip+0.5 - 0.5*nstripsy)*0.4;
-//     double ADCval = mod_data.ADCsum_ystrips[strip];
-//     double tval  = mod_data.Tmean_ystrips[strip];
-
-//     int stripleft = strip-1;
-//     int stripright = strip+1;
-
-//     for(int isamp=0; isamp<6; isamp++ ){
-//       double ADCtemp = mod_data.ADCsamp_ystrips[strip][isamp];
-
-//       double ADCleft=0.0, ADCright=0.0;
-//       if( mod_data.ystrips.find(stripleft) != mod_data.ystrips.end() ){
-// 	ADCleft = mod_data.ADCsamp_ystrips[stripleft][isamp];
-//       }
-//       if( mod_data.ystrips.find(stripright) != mod_data.ystrips.end() ){
-// 	ADCright = mod_data.ADCsamp_ystrips[stripright][isamp];
-//       }
-	
-//       if( ADCval > ADCleft && ADCval > ADCright ){
-// 	islocalmax[strip][isamp] = true;
-//       } else {
-// 	islocalmax[strip][isamp] = false;
-//       }
-//     }
-      
-      
-      
-//     if( laststrip < 0 || strip > laststrip+1 ||
-// 	(strip-striplo+1 > maxnstripspercluster && strip > stripmaxclust+1 ) ){ //new cluster:
-//       if( laststrip >= 0 ){ //not the first cluster: add current cluster to the array before resetting sums:
-// 	nstripyclust.push_back( ncontiguous );
-// 	iystriplo.push_back( striplo );
-// 	iystriphi.push_back( striphi );
-// 	iystripmax.push_back( stripmaxclust );
-// 	ymean.push_back( ysum/ADCsum );
-// 	ysigma.push_back( sqrt(fabs( y2sum/ADCsum - pow(ysum/ADCsum,2))) );
-// 	totalchargey.push_back( ADCsum );
-// 	tymean.push_back( tsum/ADCsum );
-// 	tysigma.push_back( sqrt(fabs( t2sum/ADCsum - pow(tsum/ADCsum,2))));
-
-// 	// cout << "Adding new y cluster, ymean = "
-// 	//      << ymean[nclusty] << " mm, ysigma = "
-// 	//      << ysigma[nclusty] << " mm, tmean = "
-// 	//      << tymean[nclusty] << " ns, tsigma = "
-// 	//      << tysigma[nclusty] << " ns, ADC sum = "
-// 	//      << totalchargey[nclusty] << ", nstrips = "
-// 	//      << nstripyclust[nclusty] << endl;
-
-// 	//set up and execute hit template fit:
-// 	vector<double> xtemp,ytemp,ztemp;
-// 	vector<double> extemp,eytemp,eztemp;
-// 	//double Amaxtemp=0.0, tmaxtemp;
-// 	map<int,double> Amaxstriptemp;
-// 	map<int,double> tmaxstriptemp;
-
-// 	//	  nlocalmaxima = 1;
-
-// 	nlocalmaxima=0;
-// 	stripmax.clear();
-// 	sampmax.clear();
-
-// 	stripmax.push_back( stripmaxclust );
-// 	sampmax.push_back( sampmaxclust );
-	  
-// 	for( int istripclust=striplo; istripclust<=striphi; istripclust++ ){
-	  
-// 	  //ADCmaxtemp = 0.0;
-// 	  for(int isamp=0; isamp<6; isamp++ ){    
-// 	    xtemp.push_back( (istripclust+0.5 - 0.5*nstripsy)*0.4 );
-// 	    ytemp.push_back( 12.0+25.0*isamp );
-// 	    ztemp.push_back( mod_data.ADCsamp_ystrips[istripclust][isamp] );
-
-// 	    extemp.push_back( 0.0 );
-// 	    eytemp.push_back( 0.0 );
-// 	    eztemp.push_back( sigmasample );
-
-// 	    double ADCleft = 0.0, ADCright=0.0, ADCnext=0.0, ADCprev=0.0;
-// 	    if( istripclust > striplo ) ADCleft = mod_data.ADCsamp_ystrips[istripclust-1][isamp];
-// 	    if( istripclust < striphi ) ADCright = mod_data.ADCsamp_ystrips[istripclust+1][isamp];
-// 	    if( isamp > 0 ) ADCprev = mod_data.ADCsamp_ystrips[istripclust][isamp-1];
-// 	    if( isamp < 5 ) ADCnext = mod_data.ADCsamp_ystrips[istripclust][isamp+1];
-
-// 	    //check for an additional local maximum in any of these samples with nsigma "prominence":
-// 	    if( mod_data.ADCsamp_ystrips[istripclust][isamp] > ADCleft + sigmasample*localmaxthreshold_nsigma &&
-// 		mod_data.ADCsamp_ystrips[istripclust][isamp] > ADCright + sigmasample*localmaxthreshold_nsigma &&
-// 		mod_data.ADCsamp_ystrips[istripclust][isamp] > ADCprev + sigmasample*localmaxthreshold_nsigma &&
-// 		mod_data.ADCsamp_ystrips[istripclust][isamp] > ADCnext + sigmasample*localmaxthreshold_nsigma &&
-// 		( abs( istripclust - stripmaxclust ) > 1 || abs( isamp - sampmaxclust ) > 1 ) &&
-// 		stripmax.size() < maxnhitspercluster ){
-// 	      stripmax.push_back( istripclust );
-// 	      sampmax.push_back( isamp );
-// 	    }
-	      
-// 	  }
-// 	}
-
-// 	nlocalmaxima = stripmax.size();
-	  
-// 	TGraph2DErrors *gtemp = new TGraph2DErrors( xtemp.size(),
-// 						    &(xtemp[0]), &(ytemp[0]), &(ztemp[0]),
-// 						    &(extemp[0]), &(eytemp[0]), &(eztemp[0]) );
-
-// 	int nfreeparamperhit = 5;
-// 	if( varyclustersigma == 0 ) nfreeparamperhit--;
-// 	if( varyclustertau   == 0 ) nfreeparamperhit--;
-	  
-// 	int ndftemp = xtemp.size() - nfreeparamperhit*nlocalmaxima;
-
-// 	if( ndftemp > 0 && fittemplatefunctions != 0 ){ //then we can attempt a fit:
-// 	  HitFunc->FixParameter(0,TMath::Min(double(maxnhitspercluster),double(nlocalmaxima)));
-// 	  for( int ihittemp=0; ihittemp<TMath::Min(nlocalmaxima,maxnhitspercluster); ihittemp++ ){
-// 	    HitFunc->ReleaseParameter(5*ihittemp+1);
-// 	    HitFunc->ReleaseParameter(5*ihittemp+2);
-// 	    HitFunc->ReleaseParameter(5*ihittemp+3);
-// 	    HitFunc->ReleaseParameter(5*ihittemp+4);
-// 	    HitFunc->ReleaseParameter(5*ihittemp+5);
-
-// 	    HitFunc->SetParLimits(5*ihittemp+1,0.0,100000.0);
-// 	    HitFunc->SetParLimits(5*ihittemp+3,-300.0,450.0);
-// 	    HitFunc->SetParLimits(5*ihittemp+4,0.0,100.0); //mm
-// 	    HitFunc->SetParLimits(5*ihittemp+5,0.0,300.0);
-	      
-// 	    HitFunc->SetParameter(5*ihittemp+1, mod_data.ADCmax_ystrips[stripmax[ihittemp]] );
-// 	    HitFunc->SetParameter(5*ihittemp+2, (stripmax[ihittemp]+0.5-0.5*nstripsy)*0.4 );
-// 	    if( striplo == striphi ){ //only one strip; fix position and "sigma":
-// 	      HitFunc->FixParameter(5*ihittemp+2, (stripmax[ihittemp]+0.5-0.5*nstripsy)*0.4 );
-// 	      HitFunc->FixParameter(5*ihittemp+4, clustersigma );
-// 	    }
-// 	    HitFunc->SetParameter(5*ihittemp+3, 12.5+25.0*sampmax[ihittemp]);
-// 	    HitFunc->SetParameter(5*ihittemp+4, clustersigma );
-// 	    HitFunc->SetParameter(5*ihittemp+5, clustertau );
-// 	    if( varyclustersigma == 0 ) HitFunc->FixParameter( 5*ihittemp+4,clustersigma );
-// 	    if( varyclustertau   == 0 ) HitFunc->FixParameter( 5*ihittemp+5,clustertau   ); 
-// 	  }
-
-// 	  for( int ihittemp=nlocalmaxima; ihittemp<maxnhitspercluster; ihittemp++ ){
-// 	    HitFunc->FixParameter( 5*ihittemp+1, 0.0 );
-// 	    HitFunc->FixParameter( 5*ihittemp+2, 0.0 );
-// 	    HitFunc->FixParameter( 5*ihittemp+3, 0.0 );
-// 	    HitFunc->FixParameter( 5*ihittemp+4, 1.0 );
-// 	    HitFunc->FixParameter( 5*ihittemp+5, 1.0 );
-// 	  }
-
-// 	  TFitResultPtr fitresult = gtemp->Fit( HitFunc, "S0Q", "" );
-
-// 	  if( fitresult->IsValid() ){
-// 	    // cout << "successful fit of hit template function to Y strip data, nhits = " << nlocalmaxima << endl;
-
-
-// 	    int ihitglobal=nhity1D;
-	      
-// 	    nhity1D += nlocalmaxima;
-	      
-// 	    for( int ihittemp=0; ihittemp<nlocalmaxima; ihittemp++ ){
-// 	      y0hit1D.push_back( HitFunc->GetParameter( 5*ihittemp+2 ) );
-// 	      ty0hit1D.push_back( HitFunc->GetParameter( 5*ihittemp+3 ) );
-// 	      Ayhit1D.push_back( HitFunc->GetParameter( 5*ihittemp+1 ) );
-// 	      chi2ndf_hitY1D.push_back( fitresult->Chi2()/fitresult->Ndf() );
-// 	      sigy0hit1D.push_back( HitFunc->GetParameter( 5*ihittemp+4 ) );
-// 	      tauy0hit1D.push_back( HitFunc->GetParameter( 5*ihittemp+5 ) );
-
-// 	      clustidx_yhit.push_back( nclusty );
-		
-// 	      // cout << "strip lo, strip hi = " << striplo << ", " << striphi << endl;
-// 	      // cout << "Hit " << ihittemp << ", (A,y0,t0,sigma,tau)=("
-// 	      //      << Ayhit1D[ihitglobal+ihittemp] << ", "
-// 	      //      << y0hit1D[ihitglobal+ihittemp] << ", "
-// 	      //      << ty0hit1D[ihitglobal+ihittemp] << ", "
-// 	      //      << sigy0hit1D[ihitglobal+ihittemp] << ", "
-// 	      //      << tauy0hit1D[ihitglobal+ihittemp] << "), chi2/ndf = "
-// 	      //      << chi2ndf_hitY1D[ihitglobal+ihittemp] << endl;
-		  
-// 	    }
-	      
-// 	  }
-// 	}
-
-// 	gtemp->Delete();
-
-// 	// cout << "Adding new y cluster, ymean = "
-// 	//      << ymean[nclusty] << " mm, ysigma = "
-// 	//      << ysigma[nclusty] << " mm, tmean = "
-// 	//      << tymean[nclusty] << " ns, tsigma = "
-// 	//      << tysigma[nclusty] << " ns, ADC sum = "
-// 	//      << totalchargey[nclusty] << ", nstrips = "
-// 	//      << nstripyclust[nclusty] << ", nlocalmaxima = "
-// 	//      << nlocalmaxima << endl;
-
-// 	stripmax.clear();
-// 	sampmax.clear();
-	  
-// 	nclusty++;
-//       }
-
-//       //stripmax.clear();
-	
-	
-//       ADCsum = ADCval;
-//       ysum = ycoord_local*ADCval;
-//       y2sum = pow(ycoord_local,2)*ADCval;
-//       tsum = tval*ADCval;
-//       t2sum = pow(tval,2)*ADCval;
-	
-//       ncontiguous = 1;
-//       striplo = strip;
-//       striphi = strip;
-//       //stripmax.push_back(strip);
-
-//       stripmaxclust = strip;
-//       ADCmaxclust = mod_data.ADCmax_ystrips[strip];
-//       sampmaxclust = mod_data.isampmax_ystrips[strip];
-	
-//       //	ADCmax = ADCval;
-//     } else { //strip = laststrip+1: Add to existing cluster:
-//       ADCsum += ADCval;
-//       ysum += ycoord_local*ADCval;
-//       y2sum += pow(ycoord_local,2)*ADCval;
-//       tsum += tval*ADCval;
-//       t2sum += pow(tval,2)*ADCval;
-
-//       if( mod_data.ADCmax_ystrips[strip] > ADCmaxclust ){
-// 	ADCmaxclust = mod_data.ADCmax_ystrips[strip];
-// 	sampmaxclust = mod_data.isampmax_ystrips[strip];
-// 	stripmaxclust = strip;
-// 	//isclustermax[strip]=true;
-// 	//isclustermax[laststrip] = false;
-//       }
-	
-//       striphi = strip;
-	
-//       ncontiguous++;
-//     }
-//     laststrip = strip;
-//   }
-  
-
-//   // cout << "module " << module << " layer " << layer << " cluster statistics:" << endl;
-//   // cout << "nclust x = " << nclustx << " nclust y = " << nclusty << endl;
-
-//   clust_data.nclusty = nclusty;
-//   clust_data.nstripy = nstripyclust;
-//   clust_data.iystriplo = iystriplo;
-//   clust_data.iystriphi = iystriphi;
-//   clust_data.iystripmax = iystripmax;
-//   clust_data.ymean = ymean;
-//   clust_data.ysigma = ysigma;
-//   clust_data.totalchargey = totalchargey;
-//   clust_data.tymean = tymean;
-//   clust_data.tysigma = tysigma;
-
-//   clust_data.nhity1D = nhity1D;
-//   clust_data.clustidx_yhit = clustidx_yhit;
-//   clust_data.y0hit1D = y0hit1D;
-//   clust_data.ty0hit1D = ty0hit1D;
-//   clust_data.Ayhit1D = Ayhit1D;
-//   clust_data.chi2ndf_hity1D = chi2ndf_hitY1D;
-//   clust_data.sigy0hit1D = sigy0hit1D;
-//   clust_data.tauy0hit1D = tauy0hit1D;
-
-//   clust_data.nhit2D = 0;
-
-//   clust_data.nclust2D = 0;
-  
-//   ////////////// 2D matching: try based on cluster information with no fit, and hit template fit results: /////////////////
-//   ////now loop over X and Y clusters and try to match each x cluster with one y cluster:
-//   //// Let's compute a correlation coefficient a la Evaristo:
-
-  
-  
-//   if( clust_data.nclustx > 0 && clust_data.nclusty > 0 ){
-//     clust_data.nclust2D = 0;
-    
-//     vector<bool> clustx_used(clust_data.nclustx);
-//     vector<bool> clusty_used(clust_data.nclusty);
-
-//     for( int ix=0; ix<clust_data.nclustx; ix++ ){
-//       clustx_used[ix] = false;
-//     }
-
-//     for( int iy=0; iy<clust_data.nclusty; iy++ ){
-//       clusty_used[iy] = false;
-//     }
-
-    
-    
-//     bool foundmatch = true;
-//     while( foundmatch ){
-//       foundmatch = false;
-//       int ntest=0;
-//       double bestchi2match=-1000.0;
-//       int ixbest=-1, iybest=-1;
-
-//       double bestmaxcor=-1.1;
-      
-//       for( int ix=0; ix<clust_data.nclustx; ix++ ){
-// 	for( int iy=0; iy<clust_data.nclusty; iy++ ){
-// 	  if( !clustx_used[ix] && !clusty_used[iy] ){
-
-	   
-	      
-	    
-	    
-// 	    double ASYMtemp = (clust_data.totalchargex[ix]-clust_data.totalchargey[iy])/(clust_data.totalchargex[ix]+clust_data.totalchargey[iy]);
-// 	    double chi2match = pow( ASYMtemp/0.1 ,2)+
-// 	      pow( (clust_data.txmean[ix]-clust_data.tymean[iy])/5.1,2)+
-// 	      pow( (clust_data.totalchargex[ix]-clust_data.totalchargey[iy])/20.0,2);
-
-// 	    if( chi2match < bestchi2match || ntest == 0 ){
-// 	      //if( ntest == 0 || cormax > bestmaxcor ){
-// 	      bestchi2match = chi2match;
-// 	      //bestmaxcor = cormax;
-// 	      ixbest = ix;
-// 	      iybest = iy;
-// 	    }
-// 	    ntest++;
-// 	  }
-// 	}
-//       }
-      
-//       if( ntest > 0 && ixbest >= 0 && iybest >= 0 ){
-// 	foundmatch = true;
-// 	clust_data.nclust2D++;
-
-// 	clust_data.ixclust2D.push_back( ixbest );
-// 	clust_data.iyclust2D.push_back( iybest );
-// 	clust_data.nstripx2D.push_back( clust_data.nstripx[ixbest] );
-// 	clust_data.nstripy2D.push_back( clust_data.nstripy[iybest] );
-// 	clust_data.xclust2D.push_back( clust_data.xmean[ixbest] );
-// 	clust_data.yclust2D.push_back( clust_data.ymean[iybest] );
-// 	clust_data.Eclust2D.push_back( 0.5*(clust_data.totalchargex[ixbest]+clust_data.totalchargey[iybest]) );
-// 	clust_data.tclust2D.push_back( 0.5*(clust_data.txmean[ixbest]+clust_data.tymean[iybest]) );
-// 	clust_data.dEclust2D.push_back( clust_data.totalchargex[ixbest]-clust_data.totalchargey[iybest] );
-// 	clust_data.dtclust2D.push_back( clust_data.txmean[ixbest]-clust_data.tymean[iybest] );
-// 	clust_data.CorrCoeff2D.push_back( bestmaxcor );
-
-// 	clustx_used[ixbest] = true;
-// 	clusty_used[iybest] = true;
-//       }
-//     }
-    
-//     if( clust_data.nhitx1D > 0 && clust_data.nhity1D > 0 ){
-
-//       clust_data.nhit2D = 0;
-//       //map<int, bool> hitx_used;
-//       //map<int, bool> hity_used;
-//       vector<bool> hitx_used(nhitx1D);
-//       vector<bool> hity_used(nhity1D);
-
-//       for( int ix=0; ix<nhitx1D; ix++ ){
-// 	hitx_used[ix] = false;
-//       }
-//       for( int iy=0; iy<nhity1D; iy++ ){
-// 	hity_used[iy] = false;
-//       }
-
-//       foundmatch = true;
-    
-//       while( foundmatch ){
-// 	foundmatch = false;
-// 	int ntest=0;
-// 	double bestchi2match=-1000.0;
-
-// 	int ixbestmatch=-1,iybestmatch=-1;
-      
-// 	for( int ix=0; ix<clust_data.nhitx1D; ix++ ){
-// 	  for( int iy=0; iy<clust_data.nhity1D; iy++ ){
-
-// 	    if( !hitx_used[ix] && !hity_used[iy] ){
-// 	      double chi2match = pow( (tx0hit1D[ix]-ty0hit1D[iy])/sigmaT_2Dmatch, 2 ) +
-// 		pow( (Axhit1D[ix]-Ayhit1D[iy])/sigmaADC_2Dmatch, 2 );
-	    
-// 	      if( chi2match < bestchi2match || ntest == 0 ){
-// 		bestchi2match = chi2match;
-// 		ixbestmatch=ix;
-// 		iybestmatch=iy;
-// 	      }
-	    
-// 	      ntest++;
-// 	    }
-// 	  }
-// 	}
-
-// 	if( ntest > 0 && ixbestmatch >= 0 && iybestmatch >= 0 ){
-// 	  foundmatch = true;
-// 	  clust_data.nhit2D++;
-
-// 	  clust_data.xhit2D.push_back( x0hit1D[ixbestmatch] );
-// 	  clust_data.yhit2D.push_back( y0hit1D[iybestmatch] );
-// 	  clust_data.thit2D.push_back( 0.5*(tx0hit1D[ixbestmatch]+ty0hit1D[iybestmatch]) );
-// 	  clust_data.Ahit2D.push_back( 0.5*(Axhit1D[ixbestmatch]+Ayhit1D[iybestmatch]) );
-// 	  clust_data.dthit2D.push_back( tx0hit1D[ixbestmatch]-ty0hit1D[iybestmatch] );
-// 	  clust_data.dAhit2D.push_back( Axhit1D[ixbestmatch]-Ayhit1D[iybestmatch] );
-// 	  clust_data.ixhit2D.push_back( ixbestmatch );
-// 	  clust_data.iyhit2D.push_back( iybestmatch );
-// 	  clust_data.chi2match2D.push_back( bestchi2match );
-
-// 	  hitx_used[ixbestmatch] = true;
-// 	  hity_used[iybestmatch] = true;
-// 	}
-      
-//       }
-//     }
-//   }
-//   return;
-// }
