@@ -93,7 +93,7 @@ mod_vangle -90.0 -90.0 -90.0 -90.0 -90.0 -90.0 -90.0 -90.0 -90.0 -90.0 -90.0 -90
 # default all to one:
 #mod_RYX	  1 1 1 1 1 1 1 1 1 1 1 1 
 mod_RYX           1.13668       0.96991       1.06464       1.16018      0.943958      0.886931       1.00158       1.36454       1.12082      0.991578       1.00692       1.06586 
-eventdisplay 0
+eventdisplay 1
 clustersigma 0.4
 clustertau 54.0
 varyclustersigma 0
