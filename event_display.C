@@ -341,6 +341,10 @@ map<int,double> mod_clustcorthreshold; //XY correlation coefficient of cluster-s
 map<int,double> mod_ADCasymcut; //ADC asymmetry cut for cluster X and Y sums
 map<int,double> mod_dTcut;      //tmeanx - tmeany cut for cluster summed ADC-weighted cluster mean times
 
+//Also useful to define number of modules per layer and list of modules by layer:
+map<int,int> nmodules_layer;
+map<int,set<int> > modlist_layer;
+
 // Tracking layer combinatorics: populate these arrays once so we don't do it every event:
 //For each possible number of layers from 3 up to the total number of layers, we list all possible combinations of n layers
 map<int,vector<vector<int> > > layercombos;
@@ -2547,9 +2551,9 @@ int get_nearest_module( trackdata_t trdata, int ilayer, int itrack=0 ){
 
 void event_display(){
 
-  const char *filename = "~/outputDir/hitDir/gem_hit_2812_00.root";
-  const char *configfilename = "./configs/config_UVA_EEL_5layer_2nd_set.txt";
-  const TString outfilename = "2812_event_display";
+  const char *filename = "/home/sbs-onl/analysis/long_cosmic_runs/jan_12_2021/gem_hit_2811_12.root";
+  const char *configfilename = "./configs/config_UVA_EEL_5layer_Jan2021.txt";
+  const TString outfilename = "2811_event_display";
   int nevents_save = 100;
 
   auto program_start = high_resolution_clock::now(); //starting time of the program --WX
@@ -2952,12 +2956,18 @@ void event_display(){
    //initialize the grid hit container here -- WX
   gridContainer.clear();
   
+  nmodules_layer.clear();
+  modlist_layer.clear();
+  
   zavg_layer.resize(nlayers);
   int nmod_layer[nlayers];
   for( int ilayer=0; ilayer<nlayers; ilayer++ ){
     nmod_layer[ilayer] = 0;
     zavg_layer[ilayer] = 0.0;
     gridContainer.push_back(GridHitContainer(ilayer));
+
+    nmodules_layer[ilayer] = 0;
+    modlist_layer[ilayer].clear();
   }
   for( int imod=0; imod<nmodules; imod++ ){
     int layer = mod_layer[imod];
@@ -2966,11 +2976,22 @@ void event_display(){
     for (unsigned int j=0; j<gridContainer.size(); j++){
         if (gridContainer[j].layer == layer) gridContainer[j].AddModule(imod);
     }
+
+    nmodules_layer[layer]++;
+    modlist_layer[layer].insert(imod);
+    
   }
+
+  int maxnmodperlayer=-1;
+  
   for( int ilayer=0; ilayer<nlayers; ilayer++ ){
     zavg_layer[ilayer] /= double(nmod_layer[ilayer]);
     cout << "ilayer, zavg = " << ilayer << ", " << zavg_layer[ilayer] << endl;
+
+    if( nmodules_layer[ilayer] > maxnmodperlayer ) maxnmodperlayer = nmodules_layer[ilayer];
   }
+
+  cout << "max number modules per layer = " << maxnmodperlayer << endl;
 
   //populate the array of all possible combinations of layers:
   //for( int nhitsrequired=3; nhitsrequired<=nlayers; nhitsrequired++ ){
@@ -3046,13 +3067,12 @@ void event_display(){
   
   
   TCanvas *c1 = new TCanvas("c1","c1",1600,1500);
-  c1->Divide( nlayers,1,.001,.001);
+  c1->Divide( maxnmodperlayer,nlayers,.001,.001);
   
   TCanvas *c_proj = new TCanvas("c1_proj","c1_proj",1200,800);
   c_proj->Divide(2,1);
   
-  
-  TClonesArray *hframe_layers = new TClonesArray("TH2D",nlayers);
+  TClonesArray *hframe_modules = new TClonesArray("TH2D",nmodules);
   
     
   
@@ -3167,11 +3187,37 @@ void event_display(){
     
     }
     
-    TString hnametemp;
+   
+  }
+    map<int,bool> mod_coord_flag;
     
-    new( (*hframe_layers)[ilayer] ) TH2D( hnametemp.Format("hframe_layer%d", ilayer), hnametemp.Format("Layer %d", ilayer),
-					  200, ygmin_layer[ilayer]-10.0, ygmax_layer[ilayer]+10.0,
-					  200, xgmin_layer[ilayer]-25.0, xgmax_layer[ilayer]+25.0 );
+  for( int imod=0; imod<nmodules; imod++ ){
+    TString hnametemp;
+    int layer = mod_layer[imod];
+
+
+    //For event display, the long dimension of the layer is plotted horizontally, this means that we want to check coordinate system:
+
+    double Lx_layer = xgmax_layer[layer] - xgmin_layer[layer];
+    double Ly_layer = ygmax_layer[layer] - ygmin_layer[layer]; 
+
+    if( Ly_layer < Lx_layer ){ //Y coordinate is "short" dimension of layer, plot Y (X) coordinate on the Y (X) axis (UVA-style)
+      new( (*hframe_modules)[imod] ) TH2D( hnametemp.Format("hframe_layer%d_module%d",layer,imod), hnametemp.Format("Layer %d, Module %d", layer, imod),
+					   200, -mod_Lx[imod]/2.0-15.0,mod_Lx[imod]/2.0+15.0,
+					   200, -mod_Ly[imod]/2.0-15.0,mod_Ly[imod]/2.0+15.0 );
+
+      ( (TH2D*) (*hframe_modules)[imod] )->SetXTitle("X local (mm)");
+      ( (TH2D*) (*hframe_modules)[imod] )->SetYTitle("Y local (mm)");
+      mod_coord_flag[imod] = true;
+    } else { //X coordinate is "short" dimension of layer, plot X (Y) coordinate on Y (X) axis (INFN-style)
+      new( (*hframe_modules)[imod] ) TH2D( hnametemp.Format("hframe_layer%d_module%d",layer,imod), hnametemp.Format("Layer %d, Module %d", layer, imod),
+					   200, -mod_Ly[imod]/2.0-15.0,mod_Ly[imod]/2.0+15.0,
+					   200, -mod_Lx[imod]/2.0-15.0,mod_Lx[imod]/2.0+15.0 );
+
+      ( (TH2D*) (*hframe_modules)[imod] )->SetXTitle("Y local (mm)");
+      ( (TH2D*) (*hframe_modules)[imod] )->SetYTitle("X local (mm)");
+      mod_coord_flag[imod] = false;
+    }
   }
     
 
@@ -3508,8 +3554,8 @@ void event_display(){
     if( layers_hitXY.size() >= TOTAL_REQUIRED_HIT ){ //enough layers hit to (possibly) form a track: only bother with clustering and attempted track finding if this is the case: 
 
       if( eventdisplaymode != 0 ){
-	for( int ilayer=0; ilayer<nlayers; ilayer++ ){
-	  ( (TH2D*) (*hframe_layers)[ilayer] )->Reset();
+	for( int imodule=0; imodule<nmodules; imodule++ ){
+	  ( (TH2D*) (*hframe_modules)[imodule] )->Reset();
 	}
 	( (TH2D*) (proj_xz) )->Reset();
 	( (TH2D*) (proj_yz) )->Reset();
@@ -3726,39 +3772,54 @@ void event_display(){
 	double stripADCmax=1.2e4;
 	int ncolors = gStyle->GetNumberOfColors();
 
+	map<int,int> module_ipad; //pad where module info is being plotted:
 
-	for( int ilayer=0; ilayer<nlayers; ilayer++ ){
-	  c1->cd( ilayer+1 );
-
-
-	  ( (TH2D*) (*hframe_layers)[ilayer] )->Draw();
-	}
-
+	// Plots for side view projections
 	c_proj->cd(1);
 	( (TH2D*) (proj_xz) )->Draw();
 
 	c_proj->cd(2);
 	( (TH2D*) (proj_yz) )->Draw();
+	
+	for( int ilayer=0; ilayer<nlayers; ilayer++ ){
+	//   c1->cd( ilayer+1 );
 
 
-	for(int imod = 0; imod<nmodules;imod++){
+	  int dummy=0;
+	  for( set<int>::iterator imod=modlist_layer[ilayer].begin(); imod != modlist_layer[ilayer].end(); ++imod ){
+	    int imodule = *imod;
+
+	    //int ipad = ilayer + nlayers*dummy + 1;
+
+	    int ipad = dummy + 1 + (nlayers-ilayer-1)*maxnmodperlayer;
+	    
+	    module_ipad[imodule] = ipad;
+
+	    c1->cd(ipad);
+
+	    ( (TH2D*) (*hframe_modules)[imodule] )->Draw();
+	    
+	    dummy++;
+
+
+	    c_proj->cd(1);
+	    Ltemp.SetLineColor(kBlack);
+	    
+	    Ltemp.DrawLine( (mod_x0[imodule] - mod_Lx[imodule]/2)/10, (mod_z0[imodule])/10, (mod_x0[imodule] + mod_Lx[imodule]/2)/10, (mod_z0[imodule])/10 );
+	    
+	    c_proj->cd(2);
+	    
+	    Ltemp.DrawLine( (mod_y0[imodule] - mod_Ly[imodule]/2)/10, mod_z0[imodule]/10, (mod_y0[imodule] + mod_Ly[imodule]/2)/10, mod_z0[imodule]/10 );
 	  
-	  c_proj->cd(1);
-	  Ltemp.SetLineColor(kBlack);
+	    gPad->Modified();
+	    gPad->Update();
+	    c_proj->Update();
 	  
-	  Ltemp.DrawLine( (mod_x0[imod] - mod_Lx[imod]/2)/10, (mod_z0[imod])/10, (mod_x0[imod] + mod_Lx[imod]/2)/10, (mod_z0[imod])/10 );
-	  
-	  c_proj->cd(2);
-	  
-	  Ltemp.DrawLine( (mod_y0[imod] - mod_Ly[imod]/2)/10, mod_z0[imod]/10, (mod_y0[imod] + mod_Ly[imod]/2)/10, mod_z0[imod]/10 );
-	  
-	  gPad->Modified();
-	  gPad->Update();
-	  c_proj->Update();
-	  
+	  }
 	}
+	
+	
 
-      
 	for( set<int>::iterator imod=modules_hit.begin(); imod != modules_hit.end(); ++imod ){
 	  
 	  int layer = mod_layer[*imod];
@@ -3767,7 +3828,7 @@ void event_display(){
 	  set<int> xstrips = ModData[module].xstrips;
 	  set<int> ystrips = ModData[module].ystrips;
 	  
-	  c1->cd(layer+1);
+	  c1->cd(module_ipad[module]);
 	  
 	  //clusterdata_t clusttemp = mod_clusters[module];
 	  
@@ -3792,7 +3853,7 @@ void event_display(){
 		fabs( strip_center_pos.Y() ) <= mod_Ly[module]/2.0 ){
 	      //Then we can draw this strip:
 
-	      if( uhat.X() != 0 ){ //strip is not along Y, compute upper and lower limits in X:
+	      if( fabs(uhat.X()) >= 1.e-5 ){ //strip is not along Y, compute upper and lower limits in X:
 		double xmin_strip = strip_center_pos.X() + uperphat.X()/uperphat.Y() * (-mod_Ly[module]/2.0-strip_center_pos.Y());
 		double xmax_strip = strip_center_pos.X() + uperphat.X()/uperphat.Y() * (mod_Ly[module]/2.-strip_center_pos.Y());
 
@@ -3807,10 +3868,11 @@ void event_display(){
 
 		//These are local coordinates: need to convert to global coordinates; it should be sufficient to convert the two points:
 		TVector3 point1local(xmin_strip, ymin_strip, 0.0);
-		TVector3 point2local(xmax_strip,ymax_strip, 0.0 );
-		TVector3 modcenter(mod_x0[module],mod_y0[module],mod_z0[module]);
-		TVector3 point1global = mod_Rot[module] * point1local + modcenter;
-		TVector3 point2global = mod_Rot[module] * point2local + modcenter;
+		TVector3 point2local(xmax_strip, ymax_strip, 0.0 );
+		// transformation to global coordinates no longer applicable since we now plot "module local" coordinates:
+		// TVector3 modcenter(mod_x0[module],mod_y0[module],mod_z0[module]);
+		// TVector3 point1global = mod_Rot[module] * point1local + modcenter;
+		// TVector3 point2global = mod_Rot[module] * point2local + modcenter;
 
 		//How to implement a logarithmic color scale: ADCstrip over ADCmax varies from threshold/max up to 1:
 		double logADCmin = log(thresh_stripsum/stripADCmax);
@@ -3823,17 +3885,26 @@ void event_display(){
 		
 		Ltemp.SetLineColor( gStyle->GetColorPalette( TMath::Max(0,TMath::Min(ncolors-1,ADCbin))));
 
-		Ltemp.DrawLine( point1global.Y(), point1global.X(), point2global.Y(), point2global.X() );
-		
-	      } else { //strip IS along Y:
-		double xmax_strip = strip_center_pos.X();
-		double xmin_strip = strip_center_pos.X();
-		double ymax_strip = mod_Ly[module]/2.0;
-		double ymin_strip = -mod_Ly[module]/2.0;
+		//		Ltemp.DrawLine( point1global.Y(), point1global.X(), point2global.Y(), point2global.X() );
+		if( mod_coord_flag[module] ){ //X = X, Y = Y:
+		  Ltemp.DrawLine( point1local.X(), point1local.Y(), point2local.X(), point2local.Y() );
+		} else { //Y = X, X = Y
+		  Ltemp.DrawLine( point1local.Y(), point1local.X(), point2local.Y(), point2local.X() );
+		}
+	      } else { //strip IS along Y: in this case, we need to make some changes: 
+		// double xmax_strip = strip_center_pos.X();
+		// double xmin_strip = strip_center_pos.X();
+		// double ymax_strip = mod_Ly[module]/2.0;
+		// double ymin_strip = -mod_Ly[module]/2.0;
 
+		double xmax_strip = mod_Lx[module]/2.0;
+		double xmin_strip = -mod_Lx[module]/2.0;
+		double ymax_strip = strip_center_pos.Y();
+		double ymin_strip = strip_center_pos.Y();
+		
 		//These are local coordinates: need to convert to global coordinates; it should be sufficient to convert the two points:
 		TVector3 point1local(xmin_strip, ymin_strip, 0.0);
-		TVector3 point2local(xmax_strip,ymax_strip, 0.0 );
+		TVector3 point2local(xmax_strip, ymax_strip, 0.0 );
 		TVector3 modcenter(mod_x0[module],mod_y0[module],mod_z0[module]);
 		TVector3 point1global = mod_Rot[module] * point1local + modcenter;
 		TVector3 point2global = mod_Rot[module] * point2local + modcenter;
@@ -3849,9 +3920,14 @@ void event_display(){
 		
 		Ltemp.SetLineColor( gStyle->GetColorPalette( TMath::Max(0,TMath::Min(ncolors-1,ADCbin))));
 		
-	    
+		//		Ltemp.DrawLine( point1global.Y(), point1global.X(), point2global.Y(), point2global.X() );
+		if( mod_coord_flag[module] ){ //X = X, Y = Y:
+		  Ltemp.DrawLine( point1local.X(), point1local.Y(), point2local.X(), point2local.Y() );
+		} else { //Y = X, X = Y
+		  Ltemp.DrawLine( point1local.Y(), point1local.X(), point2local.Y(), point2local.X() );
+		}
 
-		Ltemp.DrawLine( point1global.Y(), point1global.X(), point2global.Y(), point2global.X() );
+		//Ltemp.DrawLine( point1global.Y(), point1global.X(), point2global.Y(), point2global.X() );
 	      }
 	      
 	    }
@@ -3867,20 +3943,29 @@ void event_display(){
 	    double vlocal = (strip + 0.5 - 0.5*mod_nstripsv[module])*mod_vstrip_pitch[module];
 
 	    // The X strips are along the line of constant "U" =
-	    TVector3 vhat( mod_Pxv[module], mod_Pyv[module], 0.0);
+	    TVector3 vhat( mod_Pxv[module], mod_Pyv[module], 0.0); //(0, 1, 0)
 	    TVector3 zaxis(0,0,1);
 
+	    //cout << "vhat = " << endl;
+	    //vhat.Print();
+	    
 	    //Unit vector perp. to U; i.e., ALONG strip:
-	    TVector3 vperphat = zaxis.Cross(vhat).Unit();
+	    TVector3 vperphat = -zaxis.Cross(vhat).Unit();
+
+	    // cout << "vperphat = " << endl;
+	    // vperphat.Print();
 	    
 	    TVector3 strip_center_pos = vlocal*vhat;
+
+	    // cout << "strip center pos = " << endl;
+	    // strip_center_pos.Print();
 	    
 	    if( fabs( strip_center_pos.X() ) <= mod_Lx[module]/2.0 &&
 		fabs( strip_center_pos.Y() ) <= mod_Ly[module]/2.0 ){
 	      //Then we can draw this strip:
 
 	      //I think this covers all possible scenarios, SHOULD avoid divide-by-zero errors:
-	      if( vhat.X() != 0 ){ //strip is not along Y, compute upper and lower limits in X:
+	      if( fabs(vhat.X()) >= 1.e-5 ){ //strip is not along Y, compute upper and lower limits in X:
 		double xmin_strip = strip_center_pos.X() + vperphat.X()/vperphat.Y() * (-mod_Ly[module]/2.0-strip_center_pos.Y());
 		double xmax_strip = strip_center_pos.X() + vperphat.X()/vperphat.Y() * (mod_Ly[module]/2.-strip_center_pos.Y());
 
@@ -3894,6 +3979,8 @@ void event_display(){
 		if( xmin_strip == -mod_Lx[module]/2.0 ) ymin_strip = strip_center_pos.Y() + vperphat.Y()/vperphat.X() * ( xmin_strip - strip_center_pos.X() );
 		if( xmax_strip == mod_Lx[module]/2.0 ) ymax_strip = strip_center_pos.Y() + vperphat.Y()/vperphat.X() * ( xmax_strip - strip_center_pos.X() );
 
+		//cout << "ystrip (xmin,ymin,xmax,ymax)=(" << xmin_strip << ", " << ymin_strip << ", " << xmax_strip << ", " << ymax_strip << ")" << endl;
+		
 		//These are local coordinates: need to convert to global coordinates; it should be sufficient to convert the two points:
 		TVector3 point1local(xmin_strip, ymin_strip, 0.0);
 		TVector3 point2local(xmax_strip,ymax_strip, 0.0 );
@@ -3914,17 +4001,27 @@ void event_display(){
 		
 		//Ltemp.SetLineColor( gStyle->GetColorPalette( TMath::Max(0,TMath::Min(ncolors-1,TMath::Nint(ADCsum_xstrips[module][strip]/stripADCmax*(ncolors-1))))));
 
-		Ltemp.DrawLine( point1global.Y(), point1global.X(), point2global.Y(), point2global.X() );
+		//Ltemp.DrawLine( point1global.Y(), point1global.X(), point2global.Y(), point2global.X() );
+		//		Ltemp.DrawLine( point1global.Y(), point1global.X(), point2global.Y(), point2global.X() );
+		if( mod_coord_flag[module] ){ //X = X, Y = Y:
+		  Ltemp.DrawLine( point1local.X(), point1local.Y(), point2local.X(), point2local.Y() );
+		} else { //Y = X, X = Y
+		  Ltemp.DrawLine( point1local.Y(), point1local.X(), point2local.Y(), point2local.X() );
+		}
 		
 	      } else { //strip IS along Y:
-		double xmax_strip = strip_center_pos.X();
-		double xmin_strip = strip_center_pos.X();
-		double ymax_strip = mod_Ly[module]/2.0;
-		double ymin_strip = -mod_Ly[module]/2.0;
 
+		double xmax_strip = mod_Lx[module]/2.0;
+		double xmin_strip = -mod_Lx[module]/2.0;
+		double ymax_strip = strip_center_pos.Y();
+		double ymin_strip = strip_center_pos.Y();
+
+
+		//	cout << "strip along Y, (xmin,ymin,xmax,ymax) = (" << xmin_strip << ", " << ymin_strip << ", " << xmax_strip << ", " << ymax_strip << ")" << endl;
+		
 		//These are local coordinates: need to convert to global coordinates; it should be sufficient to convert the two points:
 		TVector3 point1local(xmin_strip, ymin_strip, 0.0);
-		TVector3 point2local(xmax_strip,ymax_strip, 0.0 );
+		TVector3 point2local(xmax_strip, ymax_strip, 0.0 );
 		TVector3 modcenter(mod_x0[module],mod_y0[module],mod_z0[module]);
 		TVector3 point1global = mod_Rot[module] * point1local + modcenter;
 		TVector3 point2global = mod_Rot[module] * point2local + modcenter;
@@ -3942,14 +4039,44 @@ void event_display(){
 		
 		//Ltemp.SetLineColor( gStyle->GetColorPalette( TMath::Max(0,TMath::Min(ncolors-1,TMath::Nint(ADCsum_xstrips[module][strip]/stripADCmax*(ncolors-1))))));
 
-		Ltemp.DrawLine( point1global.Y(), point1global.X(), point2global.Y(), point2global.X() );
+		//Ltemp.DrawLine( point1global.Y(), point1global.X(), point2global.Y(), point2global.X() );
+		//		Ltemp.DrawLine( point1global.Y(), point1global.X(), point2global.Y(), point2global.X() );
+		if( mod_coord_flag[module] ){ //X = X, Y = Y:
+		  Ltemp.DrawLine( point1local.X(), point1local.Y(), point2local.X(), point2local.Y() );
+		} else { //Y = X, X = Y
+		  Ltemp.DrawLine( point1local.Y(), point1local.X(), point2local.Y(), point2local.X() );
+		}
 	      }
 	      
 	    }
 	    
 	  }
 	}
+	// hframe1->SetMinimum(0);
+	// hframe2->SetMinimum(0);
+	// hframe3->SetMinimum(0);
+	// hframe4->SetMinimum(0);
 
+	// hframe1->SetMaximum(20000);
+	// hframe2->SetMaximum(20000);
+	// hframe3->SetMaximum(20000);
+	// hframe4->SetMaximum(20000);
+	
+	// c1->SetGrid();
+	// c1->cd(1)->Clear();
+	// hframe1->Draw("colz");
+	// gPad->Modified();
+	// gPad->Update();
+	// c1->cd(2)->Clear();
+	// hframe2->Draw("colz");
+	// gPad->Modified();
+	// gPad->Update();
+	// c1->cd(3)->Clear();
+	// hframe3->Draw("colz");
+	// gPad->Modified();
+	// gPad->Update();
+	// c1->cd(4)->Clear();
+	// hframe4->Draw("colz");
 	gPad->Modified();
 	gPad->Update();
 	c1->Update();
@@ -3976,14 +4103,27 @@ void event_display(){
 	  int layer = mod_layer[module];
 	  clusterdata_t clusttemp = mod_clusters[module];
 	  
+	  if(clusttemp.nclust2D > 20) continue; //Some bad events have too many clusters and slow down the script
+
 	  for( int iclust=0; iclust<clusttemp.nclust2D; iclust++ ){
 	    
 
-	    //local hit position:
+	    //global hit position:	    
 	    double xhit = clusttemp.xglobal2D[iclust];
 	    double yhit = clusttemp.yglobal2D[iclust];
 	    double zhit = clusttemp.zglobal2D[iclust];
+	    
+	    //local hit position:	    
+	    double uhit = clusttemp.xclust2D[iclust];
+	    double vhit = clusttemp.yclust2D[iclust];
+	    
+	    
+	    double det = mod_Pxu[module]*mod_Pyv[module] - mod_Pyu[module]*mod_Pxv[module];
+	    
+	    double Xlocal =  (mod_Pyv[module]*uhit - mod_Pyu[module]*vhit)/det;
+	    double Ylocal =  (mod_Pxu[module]*vhit - mod_Pxv[module]*uhit)/det;
 
+	    
 	    c_proj->cd(1);
 	    
 	    Mhit.DrawMarker( xhit/10, zhit/10 );
@@ -3995,11 +4135,16 @@ void event_display(){
 	    gPad->Modified();
 	    gPad->Update();
 	    c_proj->Update();
-	  
-	    c1->cd(layer+1);
 
-	    Mhit.DrawMarker( yhit, xhit );
 
+	    c1->cd(module_ipad[module]);
+
+	    if( mod_coord_flag[module] ){
+	      Mhit.DrawMarker( Xlocal, Ylocal );
+	    } else {
+	      Mhit.DrawMarker( Ylocal, Xlocal );
+	    }
+	    
 	    gPad->Modified();
 	    gPad->Update();
 	    //gSystem->ProcessEvents();
@@ -4012,10 +4157,11 @@ void event_display(){
 	  for( int itrack=0; itrack<tracktemp.ntracks; itrack++ ){
 
 	    c_proj->cd(1);
-	    Ltemp.DrawLine(tracktemp.Xtrack[itrack]/10, 0, (tracktemp.Xtrack[itrack]+tracktemp.Xptrack[itrack]*zgmax_global)/10, zgmax_global/10);
+	    Ltemp.DrawLine((tracktemp.Xtrack[itrack]+tracktemp.Xptrack[itrack]*(-5))/10, -5, (tracktemp.Xtrack[itrack]+tracktemp.Xptrack[itrack]*(zgmax_global + 5))/10, zgmax_global/10 + 5);
 	    
 	    c_proj->cd(2);
-	    Ltemp.DrawLine(tracktemp.Ytrack[itrack]/10, 0, (tracktemp.Ytrack[itrack]+tracktemp.Yptrack[itrack]*zgmax_global)/10, zgmax_global/10);
+	    Ltemp.DrawLine((tracktemp.Ytrack[itrack]+tracktemp.Yptrack[itrack]*(-5))/10, -5, (tracktemp.Ytrack[itrack]+tracktemp.Yptrack[itrack]*(zgmax_global + 5))/10, zgmax_global/10 + 5);
+
 	    
 	    gPad->Modified();
 	    gPad->Update();
@@ -4032,20 +4178,36 @@ void event_display(){
 	      
 	      TVector3 hitpos_global(clusttemp.xglobal2D[iclust],clusttemp.yglobal2D[iclust],clusttemp.zglobal2D[iclust]);
 
+	      
+	      
 	      //track position at module:
 	      double xtrack = tracktemp.Xtrack[itrack]+tracktemp.Xptrack[itrack]*hitpos_global.Z();
 	      double ytrack = tracktemp.Ytrack[itrack]+tracktemp.Yptrack[itrack]*hitpos_global.Z();
 
 	      TVector3 trackpos_global( xtrack, ytrack, hitpos_global.Z() );
-	     
+
+	      TVector3 modcenter_global( mod_x0[module], mod_y0[module], mod_z0[module] );
+
+	      //compute local X and Y of the track within the module:
+	      TVector3 trackpos_local = mod_Rotinv[module]*(trackpos_global-modcenter_global); 
+
+	      xtrack = trackpos_local.X();
+	      ytrack = trackpos_local.Y();
 	      
-	      c1->cd(layer+1);
+	      //now how about computing 
+	      
+	      c1->cd(module_ipad[module]);
 
 	      // Mhit.DrawMarker( yhit_local_stripcoord, xhit_local_stripcoord+nstripsx*(module%3) );
 
 	      Mtrack.SetMarkerStyle( mstyle_track[itrack] );
 	      Mtrack.SetMarkerColor( mcolor_track[itrack] );
-	      Mtrack.DrawMarker( ytrack, xtrack );
+
+	      if( mod_coord_flag[module] ){
+		Mtrack.DrawMarker( xtrack, ytrack );
+	      } else {
+		Mtrack.DrawMarker( ytrack, xtrack );
+	      }
 	      //Mhit.Draw("SAME");
 	      //Mtrack.Draw("SAME");
 		  
@@ -4056,10 +4218,10 @@ void event_display(){
 
 
 	      c_proj->cd(1);
-	      Mtrack.DrawMarker( xtrack/10, hitpos_global.Z()/10);
+	      Mtrack.DrawMarker( trackpos_global.X()/10, trackpos_global.Z()/10);
 	      
 	      c_proj->cd(2);
-	      Mtrack.DrawMarker( ytrack/10, hitpos_global.Z()/10);
+	      Mtrack.DrawMarker( trackpos_global.Y()/10, trackpos_global.Z()/10);
 	      
 	      gPad->Modified();
 	      gPad->Update();
@@ -4070,18 +4232,23 @@ void event_display(){
 	  
 	}
 	gSystem->ProcessEvents();
-	/*
-	cout << "press any key to continue (q to quit):" << endl;
-	TString reply;
-	reply.ReadLine(cin,kFALSE);
 
-	if( reply.BeginsWith("q") ) break;
-	*/
 	n_saved++;
-	if(n_saved == 1) c_proj->Print("./output/" + outfilename + ".pdf(");
-	else if(n_saved == nevents_save) c_proj->Print("./output/" + outfilename + ".pdf)");
-	else c_proj->Print("./output/" + outfilename + ".pdf");
-	
+
+	if(n_saved == 1) {
+	  c1->Print("./output/" + outfilename + ".pdf(");
+	  c_proj->Print("./output/" + outfilename + ".pdf");
+	}
+	else if(n_saved == nevents_save) {
+	  c1->Print("./output/" + outfilename + ".pdf");
+	  c_proj->Print("./output/" + outfilename + ".pdf)");
+	}
+	else {
+	  c1->Print("./output/" + outfilename + ".pdf");
+	  c_proj->Print("./output/" + outfilename + ".pdf");
+	  
+	}	
+
 
       }
 	  

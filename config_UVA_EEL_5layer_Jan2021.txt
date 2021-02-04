@@ -64,7 +64,7 @@ mod_Lx 614.4 614.4 614.4 614.4 614.4 614.4 614.4 614.4 614.4 614.4 614.4 614.4 6
 mod_Ly 512.0 512.0 512.0 512.0 512.0 512.0 512.0 512.0 512.0 512.0 512.0 512.0 512.0 512.0 512.0 512.0 512.0 512.0 512.0 512.0
 mod_uangle 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 
 mod_vangle 90.0 90.0 90.0 90.0 90.0 90.0 90.0 90.0 90.0 90.0 90.0 90.0 90.0 90.0 90.0 90.0 90.0 90.0 90.0 90.0
-eventdisplay 0
+eventdisplay 1
 maxstripsperclusterX 10
 maxstripsperclusterY 10
 maxcor_threshold  -1.1
@@ -88,5 +88,4 @@ tstripcut_nsigma 10000.0
 NMAX 10000
 TrackingAlgorithm 0
 maxhitcombos 200000
-eventdisplay 0
 endconfig
