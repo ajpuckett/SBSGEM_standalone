@@ -68,13 +68,13 @@ clust2D_dTcut 1000.0
 threshold_maxsample 50.0
 threshold_stripsum  100.0
 threshold_clustersum 250.0
-trackchi2cut 2000.0
+trackchi2cut 300.0
 trackmaxradius 30.0 # mm, max radial separation between hit and projection of track from previous layers to add hit to track.
 trackmaxslopeX 1.0
 trackmaxslopeY 1.0
 #maxADCXYthreshold 1000.0
 tstripcut_nsigma 10000.0
 #NMAX 100000000
-NMAX 10000
+NMAX 1000000
 TrackingAlgorithm 0
 endconfig

@@ -4383,23 +4383,47 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
 	    TrackNhits = tracktemp.nhitsontrack[itrack];
 	    TrackChi2NDF = tracktemp.Chi2NDFtrack[itrack];
 
+	    //In order to make the efficiency determination less biased, let's collect a list
+	    //of all the layers on the track, and require that at least three OTHER layers
+	    //than the layer in question fired.
+	    //We will have to do the same when we fill the "should hit" histogram
+	    set<int> layersontrack_temp;
+	    for( int ihit=0; ihit<tracktemp.nhitsontrack[itrack]; ihit++ ){
+	      int modtemp = tracktemp.modlist_track[itrack][ihit];
+	      int layertemp = mod_layer[modtemp];
+
+	      layersontrack_temp.insert( layertemp );
+	    }
+	      
 	    for( int ilay=0; ilay<nlayers; ilay++ ){
 	      double xtracktemp = TrackX + zavg_layer[ilay]*TrackXp;
 	      double ytracktemp = TrackY + zavg_layer[ilay]*TrackYp;
 
-	      ( (TH2D*) (*hshouldhit_layer)[ilay] )->Fill( ytracktemp, xtracktemp );
+	      // Check whether we have at least three layers OTHER than the layer in question
+	      // on this track:
 
-	      int nearest_module = get_nearest_module(tracktemp, ilay, itrack);
+	      int minhits = 3;
+	      if( layersontrack_temp.find( ilay ) != layersontrack_temp.end() ){
+		//this layer IS on the track; we require at least three OTHER layers to have fired:
+		minhits = 4;
+		//If the layer is NOT on the track, then we only require three hits in any other layers to fill the "should hit" histogram for that layer for that event.
+	      } 
 
-	      if( nearest_module >= 0 && nearest_module < nmodules ){
-		( (TH2D*) (*hshouldhit_module)[nearest_module] )->Fill( ytracktemp - mod_y0[nearest_module],
-									xtracktemp - mod_x0[nearest_module] );
+	      if( tracktemp.nhitsontrack[itrack] >= minhits ){
+		( (TH2D*) (*hshouldhit_layer)[ilay] )->Fill( ytracktemp, xtracktemp );
 
-		hNstripsX_module->Fill( ModData[nearest_module].xstrips.size(), nearest_module );
-		hNstripsY_module->Fill( ModData[nearest_module].ystrips.size(), nearest_module );
+		int nearest_module = get_nearest_module(tracktemp, ilay, itrack);
 
-		hNclust_module->Fill( mod_clusters[nearest_module].nclust2D, nearest_module );
+		if( nearest_module >= 0 && nearest_module < nmodules ){
+		  ( (TH2D*) (*hshouldhit_module)[nearest_module] )->Fill( ytracktemp - mod_y0[nearest_module],
+									  xtracktemp - mod_x0[nearest_module] );
+
+		  hNstripsX_module->Fill( ModData[nearest_module].xstrips.size(), nearest_module );
+		  hNstripsY_module->Fill( ModData[nearest_module].ystrips.size(), nearest_module );
+
+		  hNclust_module->Fill( mod_clusters[nearest_module].nclust2D, nearest_module );
 		
+		}
 	      }
 
 	      //Now HERE is where we should fill ADC type histograms:
@@ -4641,9 +4665,15 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
 	      //( (TH2D*) (*hdidhit_layer)[layer] )->Fill( HitYglobal[ihit], HitXglobal[ihit] );
 
 	      //Need to fill this with identical coordinates to how "should hit" is done to avoid bin migration effects:
-	      ( (TH2D*) (*hdidhit_layer)[layer] )->Fill( TrackY + zavg_layer[layer]*TrackYp,
-							 TrackX + zavg_layer[layer]*TrackXp );
+	      // IF we are here, then it is because a hit DID occur in this layer/module
+	      // on this track;
+	      // This means that we have to require that the total number of hits on the
+	      // track be at least equal to four to fill the "did hit" histogram
 	      
+	      if( tracktemp.nhitsontrack[itrack] >= 4 ){
+		( (TH2D*) (*hdidhit_layer)[layer] )->Fill( TrackY + zavg_layer[layer]*TrackYp,
+							   TrackX + zavg_layer[layer]*TrackXp );
+	      }
 	      ( (TH2D*) (*hxyhit_layer)[layer] )->Fill( HitYglobal[ihit], HitXglobal[ihit] );
 	      
 	      HitSigX[ihit] = clusttemp.xsigma[clusttemp.ixclust2D[iclust2D]];
@@ -4668,9 +4698,10 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
 	      //if( get_nearest_module( tracktemp, layer, itrack ) == module ){
 	      //this check shouldn't be needed any more, since get_nearest_module(track,layer) always defaults to the module with a hit
 	      // if the hit actually occurred.
-	      
-	      ( (TH2D*) (*hdidhit_module)[module] )->Fill( TrackY + zavg_layer[layer]*TrackYp - mod_y0[module],
-							   TrackX + zavg_layer[layer]*TrackXp - mod_x0[module] );
+	      if( tracktemp.nhitsontrack[itrack] >= 4 ){
+		( (TH2D*) (*hdidhit_module)[module] )->Fill( TrackY + zavg_layer[layer]*TrackYp - mod_y0[module],
+							     TrackX + zavg_layer[layer]*TrackXp - mod_x0[module] );
+	      }
 	      //}
 	    }
 	  }

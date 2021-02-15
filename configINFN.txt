@@ -93,7 +93,7 @@ mod_vangle -90.0 -90.0 -90.0 -90.0 -90.0 -90.0 -90.0 -90.0 -90.0 -90.0 -90.0 -90
 # default all to one:
 #mod_RYX	  1 1 1 1 1 1 1 1 1 1 1 1 
 mod_RYX           1.13668       0.96991       1.06464       1.16018      0.943958      0.886931       1.00158       1.36454       1.12082      0.991578       1.00692       1.06586 
-eventdisplay 1
+eventdisplay 0
 clustersigma 0.4
 clustertau 54.0
 varyclustersigma 0
@@ -112,7 +112,7 @@ clust2D_dTcut 1000.0
 threshold_maxsample 50.0
 threshold_stripsum  200.0
 threshold_clustersum 500.0
-trackchi2cut 10000.0
+trackchi2cut 200.0
 trackmaxradius 30.0 # mm, max radial separation between hit and projection of track from previous layers to add hit to track.
 trackmaxslopeX 1.0
 trackmaxslopeY 0.5
