@@ -84,8 +84,8 @@ trackmaxslopeX 1.0
 trackmaxslopeY 1.0
 #maxADCXYthreshold 1000.0
 tstripcut_nsigma 10000.0
-#NMAX 100000000
-NMAX 10000
+NMAX 100000000
+#NMAX 10000
 TrackingAlgorithm 0
 maxhitcombos 200000
 endconfig
