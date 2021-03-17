@@ -79,6 +79,10 @@ int maxnstripYpercluster=7;
 int maxneighborsX=5; //+/-4 around local maximum:
 int maxneighborsY=5; //+/-3 around local maximum:
 
+//Defaults are to keep all strips even if the max occurs in the "wrong" time sample:
+int sampmin_accept = -1; //If max ADC occurs below this bin, reject strip
+int sampmax_accept = 6;  //If max ADC occurs above this bin, reject strip
+
 //double clustersigma=0.4; //mm
 //double clustertau=50.0; //ns
 //double sigmasample=20.0; //individual sample noise width
@@ -149,6 +153,8 @@ struct moduledata_t { //for now, we will keep the "x" and "y" notation for these
   set<int> ystrips;
   map<int,double> ADCsum_xstrips;
   map<int,double> ADCsum_ystrips;
+  map<int,double> ADCsum_xstrips_goodsamp;
+  map<int,double> ADCsum_ystrips_goodsamp;
   map<int,vector<double> > ADCsamp_xstrips;
   map<int,vector<double> > ADCsamp_ystrips;
 
@@ -574,6 +580,114 @@ void prune_clusters( clusterdata_t &clusttemp ){
   clusttemp.nkeep2D = ngood;
 }
 
+int find_clusters_by_module_newnew( moduledata_t mod_data, clusterdata_t &clust_data ){
+  //In this approach, let us do 1D cluster-finding in X and Y, and then combine 1D clusters into 2D hit candidates:
+  //This might affect some of the other routines that currently expect identical numbers of X and Y clusters:
+
+  //
+
+  int module = mod_data.modindex;
+  int layer = mod_data.layerindex;
+  
+  int nlocalmaxX=0, nlocalmaxY=0;
+
+  clust_data.nclustx = 0;
+  clust_data.nclusty = 0;
+  clust_data.nclust2D = 0;
+  clust_data.modindex = module;
+  clust_data.layerindex = layer;
+  clust_data.nkeep2D = 0;
+
+  //create  temporary structures to hold local maxima:
+  map<int,bool> islocalmax; //key = strip, value = true or false;
+  set<int> localmaxima;     //list of strips that are local maxima
+  map<int,double> ADCmaxima; //key = strip, value = ADC sum of local max strip
+  vector<int> sortedmaxima;  //array of local max strips sorted by ADC amplitude: Do we really need this? I don't think so. 
+  
+  //Should we do one loop to flag all local maxima, then a second loop to check for multiple
+  //local maxima in a contiguous grouping of strips within maxneighbors of each other?
+
+  for( set<int>::iterator ix=mod_data.xstrips.begin(); ix != mod_data.xstrips.end(); ++ix ){
+    int strip = *ix;
+
+    islocalmax[strip] = false;
+    
+    double sumstrip = mod_data.ADCsum_xstrips_goodsamp[strip];
+    //check if strip is local max based on sums in immediately adjacent strips:
+    double sumleft = 0.0;
+    double sumright = 0.0;
+    if( mod_data.xstrips.find( strip-1 ) != mod_data.xstrips.end() ){
+      sumleft = mod_data.ADCsum_xstrips_goodsamp[strip-1];
+    }
+    if( mod_data.xstrips.find( strip+1 ) != mod_data.xstrips.end() ){
+      sumright = mod_data.ADCsum_xstrips_goodsamp[strip+1]; 
+    }
+
+    if( sumstrip >= sumleft && sumstrip >= sumright ){ //new local maximum: add it to the list:
+      islocalmax[strip] = true;
+      localmaxima.insert(strip);
+      ADCmaxima[strip] = sumstrip;
+
+      //unclear that the sorted list of maxima is necessary:
+      if( sortedmaxima.empty() ){
+	sortedmaxima.push_back( strip );
+      } else { //there is at least one other existing local maximum: figure out which position the new one belongs in:
+	vector<int>::iterator test = sortedmaxima.begin(); 
+
+	//We want to sort in DESCENDING order of ADC.
+	
+	// Iterate until we find the first existing strip with a SMALLER ADC sum than this one.
+	// As long as the ADC sum on THIS strip is smaller than the one at position test
+	// we increment the position
+	while( sumstrip < ADCmaxima[*test] && test != sortedmaxima.end() ) ++test;
+
+	//At this point we either found a strip with a smaller ADC than this one, or we reached the end of the list:
+	if( test != sortedmaxima.end() ){ //we did not reach the end of the list: insert this strip before the position of the
+	  //first strip with smaller ADC sum:
+	  sortedmaxima.insert( test, strip );
+	} else { //we reached the end of the list: use push_back
+	  sortedmaxima.push_back( strip );
+	}
+      }
+    }
+  }
+
+  //how do we deal with overlap? One idea is to collect all strips within +/- maxneighbors of each local max,
+  //and then come up with a formula for assigning a fractional contribution of each nearby local maximum to each strip
+  //How would we do this?
+  //loop over all the strips
+  //Count and collect a list of all local maxima within +/- maxneighbors of each strip
+  //If we treat each local maximum as a separate hit, then
+  // For each local maximum within +/- maxneighbors of any given strip,
+  // which happens to be in a contiguous grouping with that strip, estimate a fractional contribution to that strip signal:
+  //the contribution should be proportional to the ADC value of the nearby maximum, and should fall off with distance
+  //according to a Lorentzian function with a width of approximately one strip pitch:
+  // f(x-xstrip) = 1/(1 + (x-xstrip)^2/sigma^2)
+  // For each contributing local maximum, we would express the ADC sum as:
+  // fraction (hit i) = Ai/(1+(xi-xstrip)^2/sigma^2) / sum_j Aj /(1+(xj-xstrip)^2/sigma^2)
+  // And then the ADC contribution of strip k to hit i would be f_ik * ADCk
+
+  //range of contiguous fired strips within +/- maxneighbors of a local max
+  map<int,int> ixlo_maxima; 
+  map<int,int> ixhi_maxima; 
+
+  for( set<int>::iterator ix = localmaxima.begin(); ix != localmaxima.end(); ++ix ){
+    int stripmax = *ix;
+    int striplo = stripmax;
+    int striphi = stripmax;
+
+    while( mod_data.xstrips.find( striplo-1 ) != mod_data.xstrips.end() &&
+	   stripmax-striplo < maxneighborsX ) striplo--;
+    while( mod_data.xstrips.find( striphi+1 ) != mod_data.xstrips.end() &&
+	   striphi - stripmax < maxneighborsX ) striphi++;
+
+    ixlo_maxima[stripmax] = striplo;
+    ixhi_maxima[stripmax] = striphi;
+
+    
+    
+  }
+}
 
 int find_clusters_by_module_new( moduledata_t mod_data, clusterdata_t &clust_data ){
   int module = mod_data.modindex;
@@ -3872,20 +3986,27 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
       ADCsamples[5] = adc5[ich];
 
       bool keepstrip=false;
-      double maxsamp=0.0,sumsamp=0.0;
+      double maxsamp=0.0,sumsamp=0.0,sumgoodsamp=0.0;
 
       int isamp_max = -1;
+
+      //should we only sum the samples between sampmin and sampmax? not yet. That would probably break too many other parts of the code:
       
-      for( int isamp=0; isamp<6; isamp++ ){
+      
+      for( int isamp=0; isamp<nADCsamples; isamp++ ){
 	sumsamp += ADCsamples[isamp];
 	//maxsamp = (ADCsamples[isamp] > maxsamp ) ? ADCsamples[isamp] : maxsamp;
 	if( isamp_max < 0 || ADCsamples[isamp] > maxsamp ){
 	  maxsamp = ADCsamples[isamp];
 	  isamp_max = isamp;
 	}
+	if( isamp >= sampmin_accept && isamp <= sampmax_accept ){
+	  sumgoodsamp += ADCsamples[isamp];
+	}
       }
 
-      if( maxsamp >= thresh_maxsample && sumsamp >= thresh_stripsum ) keepstrip = true;
+      if( maxsamp >= thresh_maxsample && sumsamp >= thresh_stripsum &&
+	  isamp_max >= sampmin_accept && isamp_max <= sampmax_accept ) keepstrip = true;
       
       double tsum = 0.0;
       double tsum2 = 0.0;
@@ -3900,6 +4021,7 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
 
 	ModData[module].xstrips.insert( strip );
 	ModData[module].ADCsum_xstrips[strip] = 0.0;
+	ModData[module].ADCsum_xstrips_goodsamp[strip] = 0.0;
 	ModData[module].ADCsamp_xstrips[strip].resize(nADCsamples);
 	
 	// ADCsum_xstrips[module][strip] = 0.0;
@@ -3914,7 +4036,9 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
 	  
 	  ModData[module].ADCsamp_xstrips[strip][isamp] = ADCsamples[isamp];
 	  ModData[module].ADCsum_xstrips[strip] += ADCsamples[isamp];
-	  
+	  if( isamp >= sampmin_accept && isamp <= sampmax_accept ){
+	    ModData[module].ADCsum_xstrips_goodsamp[strip] += ADCsamples[isamp];
+	  }
 	  // ADCsamp_xstrips[module][strip][isamp] = ADCsamples[isamp];
 	  // ADCsum_xstrips[module][strip] += ADCsamples[isamp];
 
@@ -3993,6 +4117,7 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
 	ModData[module].ystrips.insert( strip );
 
 	ModData[module].ADCsum_ystrips[strip] = 0.0;
+	ModData[module].ADCsum_ystrips_goodsamp[strip] = 0.0;
 	ModData[module].ADCsamp_ystrips[strip].resize(nADCsamples);
 
 	//double tsamp[nADCsamples];
@@ -4004,6 +4129,10 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
 	  ModData[module].ADCsamp_ystrips[strip][isamp] = ADCsamples[isamp];
 	  ModData[module].ADCsum_ystrips[strip] += ADCsamples[isamp];
 
+	  if( isamp >= sampmin_accept && isamp <= sampmax_accept ){
+	    ModData[module].ADCsum_ystrips_goodsamp[strip] += ADCsamples[isamp];
+	  }
+	  
 	  hADCvsSampleAllStrips->Fill( isamp, ADCsamples[isamp] );
 
 	  double tsample = 12.5+25.0*isamp;
