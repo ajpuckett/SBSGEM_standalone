@@ -259,7 +259,8 @@ struct clusterdata_t { //1D and 2D clustering results by module:
   vector<double> totalchargex;
   vector<double> txmean;
   vector<double> txsigma;
-
+  vector<vector<double> > xstripADCsum; //individual strip ADCs, including effect of splitting fraction, as applicable
+  
   int nclusty;
   vector<int> nstripy;
   vector<int> iystriplo;
@@ -270,6 +271,7 @@ struct clusterdata_t { //1D and 2D clustering results by module:
   vector<double> totalchargey;
   vector<double> tymean;
   vector<double> tysigma;
+  vector<vector<double> > ystripADCsum; //individual strip ADCs, including effect of splitting fraction, as applicable
 
   // int nhitx1D;
   // vector<int>    clustidx_xhit;
