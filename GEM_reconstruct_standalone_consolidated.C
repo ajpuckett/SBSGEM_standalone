@@ -16,6 +16,7 @@
 #include <set>
 #include <map>
 #include <string>
+#include <algorithm>
 #include "TString.h"
 //#include "TClonesArray.h"
 #include "TObjArray.h"
@@ -67,6 +68,7 @@ int nlayers  = 4;
 int nADCsamples = 6;
 
 double strip_pitch = 0.4; //mm
+double sigma_hitshape = strip_pitch; //mm
 
 const double PI = TMath::Pi();
 
@@ -76,8 +78,8 @@ int maxnstripspercluster=7;
 int maxnstripXpercluster=9;
 int maxnstripYpercluster=7;
 
-int maxneighborsX=5; //+/-4 around local maximum:
-int maxneighborsY=5; //+/-3 around local maximum:
+int maxneighborsX=4; //+/-4 around local maximum:
+int maxneighborsY=4; //+/-3 around local maximum:
 
 //Defaults are to keep all strips even if the max occurs in the "wrong" time sample:
 int sampmin_accept = -1; //If max ADC occurs below this bin, reject strip
@@ -104,7 +106,7 @@ double thresh_stripsum =  300.0; //threshold on the sum of all samples on a stri
 double thresh_clustersum = 1000.0; //threshold on the summed ADCs of all strips in a cluster:
 
 double sigma_sample = 20.0; //Sigma of ADC sample noise; used to get threshold for overlapping cluster condition
-double thresh_2ndmax_nsigma = 5.0; //Number of sigmas above noise level to flag a second maximum in a contiguous grouping of strips. For this condition to occur, the 
+double thresh_2ndmax_nsigma = 2.5; //Number of sigmas above noise level to flag a second maximum in a contiguous grouping of strips. For this condition to occur, the 
 double thresh_2ndmax_fraction = 0.25; //threshold to flag 2nd maximum as a fraction of first maximum
 double sigma_hitpos=0.15; //mm
 double TrackMaxSlopeX = 1.0; //
@@ -240,6 +242,10 @@ struct clusterdata_t { //1D and 2D clustering results by module:
   vector<double> xmom2D; // xmean - xstrip max (use to refine hit position reconstruction)
   vector<double> ymom2D; // ymean - ystrip max (use to refine hit position reconstruction)
   vector<bool> keepclust2D; //flag to include or not include cluster in tracking analysis: default to true; set by "prune" filtering algorithm:
+  //Not clear we need these:
+  //  vector<vector<double> > ADCsamp_xclust2D;
+  //  vector<vector<double> > ADCsamp_yclust2D;
+  
   vector<vector<double> > ADCsamp_xclust;
   vector<vector<double> > ADCsamp_yclust;
   
@@ -652,6 +658,59 @@ int find_clusters_by_module_newnew( moduledata_t mod_data, clusterdata_t &clust_
     }
   }
 
+  //Experimental:
+  //this loop compares every maximum to every other maximum and eliminates the smaller overlapping ones that aren't "significant"
+  //Always keeps the biggest one:
+  for( int imax=0; imax<sortedmaxima.size(); imax++ ){
+    for( int jmax=imax+1; jmax<sortedmaxima.size(); jmax++ ){
+      int stripi = sortedmaxima[imax];
+      int stripj = sortedmaxima[jmax];
+
+      //status peaks i and/or j may have changed:
+      if( islocalmax[stripi] && islocalmax[stripj] ){
+      
+	double peaki = ADCmaxima[stripi];
+	double peakj = ADCmaxima[stripj];
+      
+	//We know because of the sorting, that ADC[imax] > ADC[jmax] 
+	if( abs( stripi-stripj ) <= maxneighborsX ){ //potential overlap
+	  //we know stripi - stripj must be >= 2:
+	  //Check if these two maxima are in a contiguous grouping of strips:
+	  bool contiguous = true;
+	  //loop over all strips between i and j and check that they all fired:
+	  double valley = -1.0; 
+	  for( int strip=std::min(stripi,stripj)+1; strip<=std::max(stripi,stripj)-1; strip++ ){
+	    //if any strip in between these two local maxima did NOT fire, contiguous = false:
+	    if( mod_data.xstrips.find( strip ) == mod_data.xstrips.end() ) {
+	      contiguous = false;
+	    } else if( valley < 0. || mod_data.ADCsum_xstrips_goodsamp[strip] < valley ){
+	      valley = mod_data.ADCsum_xstrips_goodsamp[strip];
+	    }
+	  }
+
+	  int nsamplesinsum = std::min(nADCsamples,sampmax_accept-sampmin_accept+1);
+
+	  double sigma_sum = sqrt(double(nsamplesinsum))*sigma_sample; // about 50 ADC channels
+	
+	  if( contiguous ){ //Check significance of overlapping maximum:
+	    if( peakj/peaki < thresh_2ndmax_fraction || peakj - valley <= thresh_2ndmax_nsigma*sigma_sum ){
+	      //If we make it here, it means that peak j occurs within a contiguous group of fired strips with a larger peak i
+	      //within maxneighbors of peak i, AND either its amplitude is less than 25% of peak i (or whatever the threshold is)
+	      // or the excess of peak j above the "valley" in between peaks i and j is less than about 2.5*50 channels = 125 channels
+	      //and therefore deemed not significant
+	      //these thresholds should be made user-configurable.
+
+	      //MAXIMUM NOT "significant": annihilate:
+	      localmaxima.erase(stripj);
+	      islocalmax[stripj] = false;
+	      ADCmaxima.erase(stripj);
+	    }
+	  }
+	}
+      }
+    }
+  }
+  
   //how do we deal with overlap? One idea is to collect all strips within +/- maxneighbors of each local max,
   //and then come up with a formula for assigning a fractional contribution of each nearby local maximum to each strip
   //How would we do this?
@@ -667,10 +726,11 @@ int find_clusters_by_module_newnew( moduledata_t mod_data, clusterdata_t &clust_
   // fraction (hit i) = Ai/(1+(xi-xstrip)^2/sigma^2) / sum_j Aj /(1+(xj-xstrip)^2/sigma^2)
   // And then the ADC contribution of strip k to hit i would be f_ik * ADCk
 
-  //range of contiguous fired strips within +/- maxneighbors of a local max
-  map<int,int> ixlo_maxima; 
-  map<int,int> ixhi_maxima; 
-
+  //The method we are using now finds too many clusters:
+  //We should iterate over the sorted list of local maxima, and for each one after the first one, check
+  //for overlap: if a local maximum is within +/- maxneighbors of another local maximum with larger amplitude,
+  //then we have to check its "significance"
+  
   for( set<int>::iterator ix = localmaxima.begin(); ix != localmaxima.end(); ++ix ){
     int stripmax = *ix;
     int striplo = stripmax;
@@ -681,12 +741,377 @@ int find_clusters_by_module_newnew( moduledata_t mod_data, clusterdata_t &clust_
     while( mod_data.xstrips.find( striphi+1 ) != mod_data.xstrips.end() &&
 	   striphi - stripmax < maxneighborsX ) striphi++;
 
-    ixlo_maxima[stripmax] = striplo;
-    ixhi_maxima[stripmax] = striphi;
+    // ixlo_maxima[stripmax] = striplo;
+    // ixhi_maxima[stripmax] = striphi;
+
+    int nstrips_maxima = striphi-striplo+1; 
+    
+    //for each maximum, loop over all strips 
 
     
+
+    double sumx = 0.0, sumx2 = 0.0, sumADC = 0.0, sumt = 0.0, sumt2 = 0.0;
+
+    map<int,double> splitfraction;
     
+    for( int istrip=striplo; istrip<=striphi; istrip++ ){
+      int nmax_strip = 1;
+      double sumweight = ADCmaxima[stripmax]/(1.0 + pow( (stripmax-istrip)*mod_ustrip_pitch[module]/sigma_hitshape, 2 ) );
+      //double sweight = ADCmaxima[stripmax]/(1.0 + pow( (stripmax-istrip)*mod_ustrip_pitch[module]/sigma_hitshape, 2 ) );
+      double maxweight = sumweight;
+
+      //for every strip, search for any other local maxima within +/- maxneighbors and calculate the "weight" of any other local maxima in this strip
+      for( int jstrip=(istrip-maxneighborsX); jstrip<=(istrip+maxneighborsX); jstrip++ ){
+	if( localmaxima.find( jstrip ) != localmaxima.end() && jstrip != stripmax ){ //then this strip has "overlap" with another local max: check if every strip in between fired:	  
+	  sumweight += ADCmaxima[jstrip]/(1.0 + pow( (jstrip-istrip)*mod_ustrip_pitch[module]/sigma_hitshape, 2 ) );
+	}
+      }
+
+      //calculate "split fraction" for this strip as the ratio of the weight of the maximum CURRENTLY under consideration in this strip
+      //to the sum of all weights of any other local maxima within +/- maxneighbors of this strip: 
+      double ADCfrac_strip = maxweight/sumweight;
+
+      splitfraction[istrip] = ADCfrac_strip;
+      
+      //Now we can start populating the 1D cluster info:
+      double ulocal = ( istrip + 0.5 - 0.5*mod_nstripsu[module] ) * mod_ustrip_pitch[module];
+      double ADCstrip = mod_data.ADCsum_xstrips_goodsamp[istrip]*ADCfrac_strip;
+      double tstrip = mod_data.Tmean_xstrips[istrip];
+      
+      sumx += ulocal * ADCstrip;
+      sumADC += ADCstrip;
+      sumx2 += pow(ulocal,2)*ADCstrip;
+      sumt += tstrip * ADCstrip;
+      sumt2 += pow(tstrip,2)*ADCstrip;
+   
+    }
+
+    if( sumADC >= thresh_clustersum ){ //don't use if the cluster ADC sum is below threshold:
+    
+      clust_data.nstripx.push_back( nstrips_maxima );
+      clust_data.ixstriplo.push_back( striplo );
+      clust_data.ixstriphi.push_back( striphi );
+      clust_data.ixstripmax.push_back( stripmax );
+      
+      clust_data.xmean.push_back( sumx / sumADC );
+      clust_data.xsigma.push_back( sqrt( sumx2/sumADC - pow(sumx/sumADC,2) ) );
+      clust_data.totalchargex.push_back( sumADC );
+      clust_data.txmean.push_back( sumt / sumADC );
+      clust_data.txsigma.push_back( sqrt( sumt2/sumADC - pow( sumt/sumADC, 2 ) ) );
+
+      vector<double> xADCsamples(nADCsamples);
+      for( int isamp=0; isamp<nADCsamples; isamp++ ){
+	xADCsamples[isamp] = 0.0;
+	for( int istrip=striplo; istrip<=striphi; istrip++ ){
+	  xADCsamples[isamp] += mod_data.ADCsamp_xstrips[istrip][isamp]*splitfraction[istrip];
+	}
+      }
+
+      clust_data.ADCsamp_xclust.push_back( xADCsamples );
+      
+      clust_data.nclustx++;
+    }
   }
+
+
+  //Now we need to repeat for Y: 
+
+  //clear out containers for local maxima:
+  islocalmax.clear();
+  localmaxima.clear(); 
+  ADCmaxima.clear();
+  sortedmaxima.clear();
+  
+  for( set<int>::iterator iy=mod_data.ystrips.begin(); iy != mod_data.ystrips.end(); ++iy ){
+    int strip = *iy;
+
+    islocalmax[strip] = false;
+    
+    double sumstrip = mod_data.ADCsum_ystrips_goodsamp[strip];
+    //check if strip is local max based on sums in immediately adjacent strips:
+    double sumleft = 0.0;
+    double sumright = 0.0;
+    if( mod_data.ystrips.find( strip-1 ) != mod_data.ystrips.end() ){
+      sumleft = mod_data.ADCsum_ystrips_goodsamp[strip-1];
+    }
+    if( mod_data.ystrips.find( strip+1 ) != mod_data.ystrips.end() ){
+      sumright = mod_data.ADCsum_ystrips_goodsamp[strip+1]; 
+    }
+
+    if( sumstrip >= sumleft && sumstrip >= sumright ){ //new local maximum: add it to the list:
+      islocalmax[strip] = true;
+      localmaxima.insert(strip);
+      ADCmaxima[strip] = sumstrip;
+
+      //unclear that the sorted list of maxima is necessary:
+      if( sortedmaxima.empty() ){
+	sortedmaxima.push_back( strip );
+      } else { //there is at least one other existing local maximum: figure out which position the new one belongs in:
+	vector<int>::iterator test = sortedmaxima.begin(); 
+
+	//We want to sort in DESCENDING order of ADC.
+	
+	// Iterate until we find the first existing strip with a SMALLER ADC sum than this one.
+	// As long as the ADC sum on THIS strip is smaller than the one at position test
+	// we increment the position
+	while( sumstrip < ADCmaxima[*test] && test != sortedmaxima.end() ) ++test;
+
+	//At this point we either found a strip with a smaller ADC than this one, or we reached the end of the list:
+	if( test != sortedmaxima.end() ){ //we did not reach the end of the list: insert this strip before the position of the
+	  //first strip with smaller ADC sum:
+	  sortedmaxima.insert( test, strip );
+	} else { //we reached the end of the list: use push_back
+	  sortedmaxima.push_back( strip );
+	}
+      }
+    }
+  }
+
+  //Experimental:
+  //this loop compares every maximum to every other maximum and eliminates the smaller overlapping ones that aren't "significant"
+  //Always keeps the biggest one:
+  for( int imax=0; imax<sortedmaxima.size(); imax++ ){
+    for( int jmax=imax+1; jmax<sortedmaxima.size(); jmax++ ){
+      int stripi = sortedmaxima[imax];
+      int stripj = sortedmaxima[jmax];
+
+      //status peaks i and/or j may have changed:
+      if( islocalmax[stripi] && islocalmax[stripj] ){
+      
+	double peaki = ADCmaxima[stripi];
+	double peakj = ADCmaxima[stripj];
+      
+	//We know because of the sorting, that ADC[imax] > ADC[jmax] 
+	if( abs( stripi-stripj ) <= maxneighborsY ){ //potential overlap
+	  //we know stripi - stripj must be >= 2:
+	  //Check if these two maxima are in a contiguous grouping of strips:
+	  bool contiguous = true;
+	  //loop over all strips between i and j and check that they all fired:
+	  double valley = -1.0; 
+	  for( int strip=std::min(stripi,stripj)+1; strip<=std::max(stripi,stripj)-1; strip++ ){
+	    //if any strip in between these two local maxima did NOT fire, contiguous = false:
+	    if( mod_data.ystrips.find( strip ) == mod_data.ystrips.end() ) {
+	      contiguous = false;
+	    } else if( valley < 0. || mod_data.ADCsum_ystrips_goodsamp[strip] < valley ){
+	      valley = mod_data.ADCsum_ystrips_goodsamp[strip];
+	    }
+	  }
+
+	  int nsamplesinsum = std::min(nADCsamples,sampmax_accept-sampmin_accept+1);
+
+	  double sigma_sum = sqrt(double(nsamplesinsum))*sigma_sample; // about 50 ADC channels
+	
+	  if( contiguous ){ //Check significance of overlapping maximum:
+	    if( peakj/peaki < thresh_2ndmax_fraction || peakj - valley <= thresh_2ndmax_nsigma*sigma_sum ){
+	      //If we make it here, it means that peak j occurs within a contiguous group of fired strips with a larger peak i
+	      //within maxneighbors of peak i, AND either its amplitude is less than 25% of peak i (or whatever the threshold is)
+	      // or the excess of peak j above the "valley" in between peaks i and j is less than about 2.5*50 channels = 125 channels
+	      //and therefore deemed not significant
+	      //these thresholds should be made user-configurable.
+
+	      //MAXIMUM NOT "significant": annihilate:
+	      localmaxima.erase(stripj);
+	      islocalmax[stripj] = false;
+	      ADCmaxima.erase(stripj);
+	    }
+	  }
+	}
+      }
+    }
+  }
+
+
+  
+  for( set<int>::iterator iy = localmaxima.begin(); iy != localmaxima.end(); ++iy ){
+    int stripmax = *iy;
+    int striplo = stripmax;
+    int striphi = stripmax;
+
+    while( mod_data.ystrips.find( striplo-1 ) != mod_data.ystrips.end() &&
+	   stripmax-striplo < maxneighborsY ) striplo--;
+    while( mod_data.ystrips.find( striphi+1 ) != mod_data.ystrips.end() &&
+	   striphi - stripmax < maxneighborsY ) striphi++;
+
+    // iylo_maxima[stripmax] = striplo;
+    // iyhi_maxima[stripmax] = striphi;
+
+    int nstrips_maxima = striphi-striplo+1; 
+    
+    //for each maximum, loop over all strips 
+
+   
+
+    double sumy = 0.0, sumy2 = 0.0, sumADC = 0.0, sumt = 0.0, sumt2 = 0.0;
+
+    map<int,double> splitfraction;
+    
+    for( int istrip=striplo; istrip<=striphi; istrip++ ){
+      int nmax_strip = 1;
+      double sumweight = ADCmaxima[stripmax]/(1.0 + pow( (stripmax-istrip)*mod_vstrip_pitch[module]/sigma_hitshape, 2 ) );
+      //double sweight = ADCmaxima[stripmax]/(1.0 + pow( (stripmax-istrip)*mod_ustrip_pitch[module]/sigma_hitshape, 2 ) );
+      double maxweight = sumweight;
+
+      //for every strip, search for any other local maxima within +/- maxneighbors and calculate the "weight" of any other local maxima in this strip
+      for( int jstrip=istrip-maxneighborsY; jstrip<=istrip+maxneighborsY; jstrip++ ){
+	if( localmaxima.find( jstrip ) != localmaxima.end() && jstrip != stripmax ){ //then this strip has "overlap" with another local max
+	  sumweight += ADCmaxima[jstrip]/(1.0 + pow( (jstrip-istrip)*mod_vstrip_pitch[module]/sigma_hitshape, 2 ) );
+	}
+      }
+
+      //calculate "split fraction" for this strip as the ratio of the weight of the maximum CURRENTLY under consideration in this strip
+      //to the sum of all weights of any other local maxima within +/- maxneighbors of this strip: 
+      double ADCfrac_strip = maxweight/sumweight;
+
+      splitfraction[istrip] = ADCfrac_strip;
+      
+      //Now we can start populating the 1D cluster info:
+      double vlocal = ( istrip + 0.5 - 0.5*mod_nstripsv[module] ) * mod_vstrip_pitch[module];
+      double ADCstrip = mod_data.ADCsum_ystrips_goodsamp[istrip]*ADCfrac_strip;
+      double tstrip = mod_data.Tmean_ystrips[istrip];
+      
+      sumy += vlocal * ADCstrip;
+      sumADC += ADCstrip;
+      sumy2 += pow(vlocal,2)*ADCstrip;
+      sumt += tstrip * ADCstrip;
+      sumt2 += pow(tstrip,2)*ADCstrip;
+   
+    }
+
+    if( sumADC >= thresh_clustersum ){
+      
+      clust_data.nstripy.push_back( nstrips_maxima );
+      clust_data.iystriplo.push_back( striplo );
+      clust_data.iystriphi.push_back( striphi );
+      clust_data.iystripmax.push_back( stripmax );
+      
+      clust_data.ymean.push_back( sumy / sumADC );
+      clust_data.ysigma.push_back( sqrt( sumy2/sumADC - pow(sumy/sumADC,2) ) );
+      clust_data.totalchargey.push_back( sumADC );
+      clust_data.tymean.push_back( sumt / sumADC );
+      clust_data.tysigma.push_back( sqrt( sumt2/sumADC - pow( sumt/sumADC, 2 ) ) );
+
+      vector<double> yADCsamples(nADCsamples);
+      for( int isamp=0; isamp<nADCsamples; isamp++ ){
+	yADCsamples[isamp] = 0.0;
+	for( int istrip=striplo; istrip<=striphi; istrip++ ){
+	  yADCsamples[isamp] += mod_data.ADCsamp_ystrips[istrip][isamp]*splitfraction[istrip];
+	}
+      }
+
+      clust_data.ADCsamp_yclust.push_back( yADCsamples );
+      
+      clust_data.nclusty++;
+    }
+  }
+
+
+  //Now we are done with 1D clustering. Form 2D clusters: for now we form all possible X/Y (or U/V) associations:
+
+  //long n2Dclustercandidates_raw = clust_data.nclustx * clust_data.nclusty;
+
+  for( int iclustx=0; iclustx<clust_data.nclustx; iclustx++ ){
+    for( int iclusty=0; iclusty<clust_data.nclusty; iclusty++ ){
+      //to calculate cluster-level correlation coefficients, we need to use cluster-summed ADC samples calculated above
+      
+      double sumx=0.0, sumy=0.0, sumx2=0.0, sumy2=0.0, sumxy=0.0;
+
+      double sumxmax=0.0, sumymax=0.0,sumx2max=0.0,sumy2max=0.0, sumxymax=0.0; 
+      
+      for( int isamp=0; isamp<nADCsamples; isamp++ ){
+	sumx += clust_data.ADCsamp_xclust[iclustx][isamp];
+	sumy += clust_data.ADCsamp_yclust[iclusty][isamp];
+	sumx2 += pow( clust_data.ADCsamp_xclust[iclustx][isamp], 2 );
+	sumy2 += pow( clust_data.ADCsamp_yclust[iclusty][isamp], 2 );
+	sumxy += clust_data.ADCsamp_xclust[iclustx][isamp] * clust_data.ADCsamp_yclust[iclusty][isamp];
+
+	sumxmax += mod_data.ADCsamp_xstrips[clust_data.ixstripmax[iclustx]][isamp];
+	sumymax += mod_data.ADCsamp_ystrips[clust_data.iystripmax[iclusty]][isamp];
+	sumx2max += pow( mod_data.ADCsamp_xstrips[clust_data.ixstripmax[iclustx]][isamp], 2 );
+	sumy2max += pow( mod_data.ADCsamp_ystrips[clust_data.iystripmax[iclusty]][isamp], 2 );
+	sumxymax += mod_data.ADCsamp_xstrips[clust_data.ixstripmax[iclustx]][isamp]*
+	  mod_data.ADCsamp_ystrips[clust_data.iystripmax[iclusty]][isamp];
+      }
+
+      double nSAMP = double(nADCsamples);
+
+      double mux = sumx/nSAMP;
+      double muy = sumy/nSAMP;
+      double varx = sumx2/nSAMP - pow(mux,2);
+      double vary = sumy2/nSAMP - pow(muy,2);
+      double sigx = sqrt(varx);
+      double sigy = sqrt(vary);
+      
+      double ccor_clust = (sumxy - nSAMP*mux*muy)/(nSAMP*sigx*sigy);
+
+      double muxmax = sumxmax/nSAMP;
+      double muymax = sumymax/nSAMP;
+      double varxmax = sumx2max/nSAMP - pow(muxmax,2);
+      double varymax = sumy2max/nSAMP - pow(muymax,2);
+      double sigxmax = sqrt(varxmax);
+      double sigymax = sqrt(varymax);
+
+      double ccor_maxstrips = (sumxymax - nSAMP*muxmax*muymax)/(nSAMP*sigxmax*sigymax);
+
+      //Do we want to apply timing and/or threshold and/or ADC asymmetry cuts here?
+      //At this stage we keep everything. Later we may wish to revisit that:
+      clust_data.itrack_clust2D.push_back( -1 );
+      clust_data.ixclust2D.push_back( iclustx );
+      clust_data.iyclust2D.push_back( iclusty );
+      //these are redundant, but ok:
+      clust_data.nstripx2D.push_back( clust_data.nstripx[iclustx] );
+      clust_data.nstripy2D.push_back( clust_data.nstripy[iclusty] );
+      clust_data.xclust2D.push_back( clust_data.xmean[iclustx] );
+      clust_data.yclust2D.push_back( clust_data.ymean[iclusty] );
+      clust_data.xclust2Dcorr.push_back( clust_data.xmean[iclustx] );
+      clust_data.yclust2Dcorr.push_back( clust_data.ymean[iclusty] );
+      clust_data.Eclust2D.push_back( 0.5*(clust_data.totalchargex[iclustx]+clust_data.totalchargey[iclusty]) );
+      clust_data.dEclust2D.push_back( clust_data.totalchargex[iclustx]-clust_data.totalchargey[iclusty] );
+      clust_data.tclust2D.push_back( 0.5*(clust_data.txmean[iclustx]+clust_data.tymean[iclusty]) );
+      clust_data.tclust2Dwalkcorr.push_back( clust_data.tclust2D[clust_data.nclust2D] );
+      clust_data.dtclust2D.push_back( clust_data.txmean[iclustx]-clust_data.tymean[iclusty] );
+      clust_data.dtclust2Dwalkcorr.push_back( clust_data.dtclust2D[clust_data.nclust2D] );
+      clust_data.CorrCoeff2D.push_back( ccor_clust );
+      clust_data.CorrCoeffMaxStrips.push_back( ccor_maxstrips );
+      clust_data.keepclust2D.push_back( true );
+
+      //now calculate global hit coordinates:
+      
+      double Utemp = clust_data.xmean[iclustx];
+      double Vtemp = clust_data.ymean[iclusty];
+
+      double det = mod_Pxu[module]*mod_Pyv[module] - mod_Pyu[module]*mod_Pxv[module]; //cos( alphau) * sin(alphav) - sin(alphau)*cos(alphav) = 1 for alphau = 0, alphav = 90
+      double Xtemp = (mod_Pyv[module]*Utemp - mod_Pyu[module]*Vtemp)/det; //(sin(alphav)*U - sin(alphau)*V)/det = U = X for alphau = 0, alphav = 90
+      double Ytemp = (mod_Pxu[module]*Vtemp - mod_Pxv[module]*Utemp)/det; //(cos(alphau)*V - cos(alphav)*U)/det = V = Y for alphau = 0, alphav = 90
+	
+	//      cout << "(module, U, V, X, Y)=(" << module << ", " << Utemp << ", " << Vtemp << ", " << Xtemp << ", " << Ytemp << ")"
+	//   << endl;
+	
+	//compute global hit coordinates ONCE:
+	//TVector3 hitpos_local( clust_data.xmean[nclust], clust_data.ymean[nclust], 0.0 );
+      TVector3 hitpos_local( Xtemp, Ytemp, 0.0 );
+	
+	
+      TVector3 modcenter_global(mod_x0[module], mod_y0[module], mod_z0[module] );
+      TVector3 hitpos_global = mod_Rot[module] * hitpos_local + modcenter_global;
+	
+      clust_data.xglobal2D.push_back( hitpos_global.X() );
+      clust_data.yglobal2D.push_back( hitpos_global.Y() );
+      clust_data.zglobal2D.push_back( hitpos_global.Z() );
+
+      double xstripmax = (clust_data.ixstripmax[iclustx] + 0.5 - 0.5*mod_nstripsu[module] )*mod_ustrip_pitch[module];
+      double ystripmax = (clust_data.iystripmax[iclusty] + 0.5 - 0.5*mod_nstripsv[module] )*mod_vstrip_pitch[module];
+
+      clust_data.xmom2D.push_back( (clust_data.xmean[iclustx]-xstripmax)/mod_ustrip_pitch[module] );
+      clust_data.ymom2D.push_back( (clust_data.ymean[iclustx]-ystripmax)/mod_vstrip_pitch[module] );
+      
+      clust_data.nclust2D++;
+    } 
+  }
+
+  if( clust_data.nclust2D > 0 ){
+    prune_clusters( clust_data );
+  }
+  return 0;
 }
 
 int find_clusters_by_module_new( moduledata_t mod_data, clusterdata_t &clust_data ){
@@ -2713,7 +3138,8 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
 
   //Tree design: Separate track and hit arrays. Since 
 
-
+  long firstevent=0;
+  
   long NMAX = -1; //-1, analyze all events in the file; >= 0 = stop at NMAX
   
   ifstream configfile(configfilename);
@@ -2734,6 +3160,11 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
 	if( ntokens >= 2 ){
 	  TString skey = ( (TObjString*) (*tokens)[0] )->GetString();
 
+	  if( skey == "firstevent" ){
+	    TString stemp = ( (TObjString*) (*tokens)[1] )->GetString();
+	    firstevent = stemp.Atoi();
+	  }
+	  
 	  if( skey == "maxneighborsx" ){
 	    TString stemp = ( (TObjString*) (*tokens)[1] )->GetString();
 	    //maxnhitcombinations = stemp.Atoi();
@@ -3438,7 +3869,7 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
   
   cout << "Total events = " << C->GetEntries() << endl;
   
-  long nevent=0;
+  long nevent=firstevent;
 
   fout->cd();
 
@@ -3825,7 +4256,7 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
     
   }
   
-  while( C->GetEntry(nevent++) && (NMAX < 0 || nevent < NMAX ) ){
+  while( C->GetEntry(nevent++) && (NMAX < 0 || nevent-firstevent < NMAX ) ){
     if( nevent % 1000 == 0 ) cout << nevent << endl;
 
     EventID = evtID;
@@ -4304,12 +4735,17 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
 	  }
 	}
 	
-
-	//cout << "starting cluster finding, event " << evtID << ", module " << module << ". (nstrip X, nstrip Y) = (" << ModData[module].xstrips.size()
-	//    << ", " << ModData[module].ystrips.size() << ")" << endl;
-	int clusterflag = find_clusters_by_module_new( ModData[module], clusttemp );
+	
+	// cout << "starting cluster finding, event " << evtID << ", module " << module << ". (nstrip X, nstrip Y) = (" << ModData[module].xstrips.size()
+	//      << ", " << ModData[module].ystrips.size() << ")" << endl;
+	//int clusterflag = find_clusters_by_module_new( ModData[module], clusttemp );
 
 	
+	
+	int clusterflag = find_clusters_by_module_newnew( ModData[module], clusttemp );
+
+	//NEW NEW clustering works, we need to track down and eliminate places where we assume
+	// that nclustx == nclusty == nclust2D
 	
 	if( clusterflag != 0 ){
 	  cout << "event " << evtID << ", module " << module << " too noisy, gave up" << endl;
@@ -4317,7 +4753,7 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
 
 	//hNclust_module->Fill(clusttemp.nclust2D, module );
 	
-	//	cout << "ending cluster finding, ncluster =  " << clusttemp.nclust2D << endl;
+	//cout << "ending cluster finding, ncluster =  " << clusttemp.nclust2D << endl;
 	
 	mod_clusters[module] = clusttemp;
 
@@ -4426,7 +4862,7 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
 
       if( nlayers_with_2Dclust >= TOTAL_REQUIRED_HIT ){
 
-	//	cout << "Finding tracks, event... " << evtID << endl;
+	//cout << "Finding tracks, event... " << evtID << endl;
 	
 	auto start = high_resolution_clock::now();
 	//define the forward and backward constraint points
@@ -4650,26 +5086,26 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
 	    hclustwidth_x_module->Fill( clusttemp.nstripx2D[iclust2D], module );
 	    hclustwidth_y_module->Fill( clusttemp.nstripy2D[iclust2D], module );
 
-	    hmaxtimebin_xstrip_module->Fill( ModData[module].isampmax_xstrips[clusttemp.ixstripmax[iclust2D]], module );
-	    hmaxtimebin_ystrip_module->Fill( ModData[module].isampmax_ystrips[clusttemp.iystripmax[iclust2D]], module );
+	    hmaxtimebin_xstrip_module->Fill( ModData[module].isampmax_xstrips[clusttemp.ixstripmax[clusttemp.ixclust2D[iclust2D]]], module );
+	    hmaxtimebin_ystrip_module->Fill( ModData[module].isampmax_ystrips[clusttemp.iystripmax[clusttemp.iyclust2D[iclust2D]]], module );
 
 	    hADCasym_vs_module->Fill( module, clusttemp.dEclust2D[iclust2D]/(2.0*clusttemp.Eclust2D[iclust2D]) );
 	    hdT_vs_module->Fill( module, clusttemp.dtclust2D[iclust2D] );
 
-	    hADCsum_Xstrip_max_module->Fill( ModData[module].ADCsum_xstrips[clusttemp.ixstripmax[iclust2D]], module );
-	    hADCsum_Ystrip_max_module->Fill( ModData[module].ADCsum_ystrips[clusttemp.iystripmax[iclust2D]], module );
+	    hADCsum_Xstrip_max_module->Fill( ModData[module].ADCsum_xstrips[clusttemp.ixstripmax[clusttemp.ixclust2D[iclust2D]]], module );
+	    hADCsum_Ystrip_max_module->Fill( ModData[module].ADCsum_ystrips[clusttemp.iystripmax[clusttemp.iyclust2D[iclust2D]]], module );
 
-	    hADCsampmax_Xstrip_module->Fill( ModData[module].ADCmax_xstrips[clusttemp.ixstripmax[iclust2D]], module );
-	    hADCsampmax_Ystrip_module->Fill( ModData[module].ADCmax_ystrips[clusttemp.iystripmax[iclust2D]], module );
+	    hADCsampmax_Xstrip_module->Fill( ModData[module].ADCmax_xstrips[clusttemp.ixstripmax[clusttemp.ixclust2D[iclust2D]]], module );
+	    hADCsampmax_Ystrip_module->Fill( ModData[module].ADCmax_ystrips[clusttemp.iystripmax[clusttemp.iyclust2D[iclust2D]]], module );
 
-	    hADCsumXclust_module->Fill( clusttemp.totalchargex[iclust2D], module );
-	    hADCsumYclust_module->Fill( clusttemp.totalchargey[iclust2D], module );
+	    hADCsumXclust_module->Fill( clusttemp.totalchargex[clusttemp.ixclust2D[iclust2D]], module );
+	    hADCsumYclust_module->Fill( clusttemp.totalchargey[clusttemp.iyclust2D[iclust2D]], module );
 
-	    hADCprodXYstrip_max_module->Fill( sqrt(ModData[module].ADCsum_xstrips[clusttemp.ixstripmax[iclust2D]]*
-						   ModData[module].ADCsum_ystrips[clusttemp.iystripmax[iclust2D]] ), module );
-	    hADCprodXYsamp_max_module->Fill( sqrt(ModData[module].ADCmax_xstrips[clusttemp.ixstripmax[iclust2D]]*
-						  ModData[module].ADCmax_ystrips[clusttemp.iystripmax[iclust2D]] ), module );
-	    hADCprodXYclust_module->Fill( sqrt( clusttemp.totalchargex[iclust2D]*clusttemp.totalchargey[iclust2D] ), module );
+	    hADCprodXYstrip_max_module->Fill( sqrt(ModData[module].ADCsum_xstrips[clusttemp.ixstripmax[clusttemp.ixclust2D[iclust2D]]]*
+						   ModData[module].ADCsum_ystrips[clusttemp.iystripmax[clusttemp.iyclust2D[iclust2D]]] ), module );
+	    hADCprodXYsamp_max_module->Fill( sqrt(ModData[module].ADCmax_xstrips[clusttemp.ixstripmax[clusttemp.ixclust2D[iclust2D]]]*
+						  ModData[module].ADCmax_ystrips[clusttemp.iystripmax[clusttemp.iyclust2D[iclust2D]]] ), module );
+	    hADCprodXYclust_module->Fill( sqrt( clusttemp.totalchargex[clusttemp.ixclust2D[iclust2D]]*clusttemp.totalchargey[clusttemp.iyclust2D[iclust2D]] ), module );
 
 	    hStrip_maxcor_module->Fill( clusttemp.CorrCoeffMaxStrips[iclust2D], module );
 	    hClust_corr_module->Fill( clusttemp.CorrCoeff2D[iclust2D], module );
@@ -4702,8 +5138,8 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
 	      hADCsampXstrip_max->Fill( isamp, ModData[module].ADCsamp_xstrips[clusttemp.ixstripmax[clusttemp.ixclust2D[iclust2D]]][isamp] );
 	      hADCsampYstrip_max->Fill( isamp, ModData[module].ADCsamp_ystrips[clusttemp.iystripmax[clusttemp.iyclust2D[iclust2D]]][isamp] );
 
-	      hADCsampXclust->Fill( isamp, clusttemp.ADCsamp_xclust[iclust2D][isamp] );
-	      hADCsampYclust->Fill( isamp, clusttemp.ADCsamp_yclust[iclust2D][isamp] );
+	      hADCsampXclust->Fill( isamp, clusttemp.ADCsamp_xclust[clusttemp.ixclust2D[iclust2D]][isamp] );
+	      hADCsampYclust->Fill( isamp, clusttemp.ADCsamp_yclust[clusttemp.iyclust2D[iclust2D]][isamp] );
 	    }
 
 	    hADCsampmax_Xstrip->Fill( ModData[module].ADCsamp_xstrips[clusttemp.ixstripmax[clusttemp.ixclust2D[iclust2D]]][ModData[module].isampmax_xstrips[clusttemp.ixstripmax[clusttemp.ixclust2D[iclust2D]]]] );
@@ -5195,49 +5631,49 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
 	  
 	  for( int iclust=0; iclust<clusttemp.nclust2D; iclust++ ){
 	    
+	    if( clusttemp.keepclust2D[iclust] ){
+	      //global hit position:	    
+	      double xhit = clusttemp.xglobal2D[iclust];
+	      double yhit = clusttemp.yglobal2D[iclust];
+	      double zhit = clusttemp.zglobal2D[iclust];
+	    
+	      //local hit position:	    
+	      double uhit = clusttemp.xclust2D[iclust];
+	      double vhit = clusttemp.yclust2D[iclust];
+	    
+	    
+	      double det = mod_Pxu[module]*mod_Pyv[module] - mod_Pyu[module]*mod_Pxv[module];
+	    
+	      double Xlocal =  (mod_Pyv[module]*uhit - mod_Pyu[module]*vhit)/det;
+	      double Ylocal =  (mod_Pxu[module]*vhit - mod_Pxv[module]*uhit)/det;
 
-	    //global hit position:	    
-	    double xhit = clusttemp.xglobal2D[iclust];
-	    double yhit = clusttemp.yglobal2D[iclust];
-	    double zhit = clusttemp.zglobal2D[iclust];
 	    
-	    //local hit position:	    
-	    double uhit = clusttemp.xclust2D[iclust];
-	    double vhit = clusttemp.yclust2D[iclust];
+	      c_proj->cd(1);
 	    
-	    
-	    double det = mod_Pxu[module]*mod_Pyv[module] - mod_Pyu[module]*mod_Pxv[module];
-	    
-	    double Xlocal =  (mod_Pyv[module]*uhit - mod_Pyu[module]*vhit)/det;
-	    double Ylocal =  (mod_Pxu[module]*vhit - mod_Pxv[module]*uhit)/det;
+	      Mhit.DrawMarker( xhit/10, zhit/10 );
 
+	      c_proj->cd(2);
 	    
-	    c_proj->cd(1);
+	      Mhit.DrawMarker( yhit/10, zhit/10 );
 	    
-	    Mhit.DrawMarker( xhit/10, zhit/10 );
-
-	    c_proj->cd(2);
-	    
-	    Mhit.DrawMarker( yhit/10, zhit/10 );
-	    
-	    gPad->Modified();
-	    gPad->Update();
-	    c_proj->Update();
+	      gPad->Modified();
+	      gPad->Update();
+	      c_proj->Update();
 
 
-	    c1->cd(module_ipad[module]);
+	      c1->cd(module_ipad[module]);
 
-	    if( mod_coord_flag[module] ){
-	      Mhit.DrawMarker( Xlocal, Ylocal );
-	    } else {
-	      Mhit.DrawMarker( Ylocal, Xlocal );
+	      if( mod_coord_flag[module] ){
+		Mhit.DrawMarker( Xlocal, Ylocal );
+	      } else {
+		Mhit.DrawMarker( Ylocal, Xlocal );
+	      }
+	    
+	      gPad->Modified();
+	      gPad->Update();
+	      //gSystem->ProcessEvents();
+	      c1->Update();
 	    }
-	    
-	    gPad->Modified();
-	    gPad->Update();
-	    //gSystem->ProcessEvents();
-	    c1->Update();
-	    
 	  }
 	}
       
