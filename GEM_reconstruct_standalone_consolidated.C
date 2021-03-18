@@ -106,7 +106,7 @@ double thresh_stripsum =  300.0; //threshold on the sum of all samples on a stri
 double thresh_clustersum = 1000.0; //threshold on the summed ADCs of all strips in a cluster:
 
 double sigma_sample = 20.0; //Sigma of ADC sample noise; used to get threshold for overlapping cluster condition
-double thresh_2ndmax_nsigma = 2.5; //Number of sigmas above noise level to flag a second maximum in a contiguous grouping of strips. For this condition to occur, the 
+double thresh_2ndmax_nsigma = 5.0; //Number of sigmas above noise level to flag a second maximum in a contiguous grouping of strips. For this condition to occur, the 
 double thresh_2ndmax_fraction = 0.25; //threshold to flag 2nd maximum as a fraction of first maximum
 double sigma_hitpos=0.15; //mm
 double TrackMaxSlopeX = 1.0; //
@@ -678,28 +678,40 @@ int find_clusters_by_module_newnew( moduledata_t mod_data, clusterdata_t &clust_
 	  //Check if these two maxima are in a contiguous grouping of strips:
 	  bool contiguous = true;
 	  //loop over all strips between i and j and check that they all fired:
-	  double valley = -1.0; 
+	  double valley = -1.0;
+	  int minstrip = -1;
 	  for( int strip=std::min(stripi,stripj)+1; strip<=std::max(stripi,stripj)-1; strip++ ){
 	    //if any strip in between these two local maxima did NOT fire, contiguous = false:
 	    if( mod_data.xstrips.find( strip ) == mod_data.xstrips.end() ) {
 	      contiguous = false;
 	    } else if( valley < 0. || mod_data.ADCsum_xstrips_goodsamp[strip] < valley ){
 	      valley = mod_data.ADCsum_xstrips_goodsamp[strip];
+	      minstrip = strip;
 	    }
 	  }
 
 	  int nsamplesinsum = std::min(nADCsamples,sampmax_accept-sampmin_accept+1);
 
 	  double sigma_sum = sqrt(double(nsamplesinsum))*sigma_sample; // about 50 ADC channels
-	
+
+	  double fracexpect_i = 1.0/(1.0 + pow( (minstrip - stripi)*mod_ustrip_pitch[module]/sigma_hitshape, 2) );
+	  double fracexpect_j = 1.0/(1.0 + pow( (minstrip - stripj)*mod_ustrip_pitch[module]/sigma_hitshape, 2) );
+
+	  double valleyexpect = fracexpect_i*peaki + fracexpect_j*peakj;
+	  
 	  if( contiguous ){ //Check significance of overlapping maximum:
-	    if( peakj/peaki < thresh_2ndmax_fraction || peakj - valley <= thresh_2ndmax_nsigma*sigma_sum ){
+	    if( peakj/peaki < thresh_2ndmax_fraction || peakj - valley <= thresh_2ndmax_nsigma*sigma_sum ||
+		peaki - valley <= thresh_2ndmax_nsigma*sigma_sum ||
+		valley - valleyexpect > thresh_2ndmax_nsigma*sigma_sum ){
 	      //If we make it here, it means that peak j occurs within a contiguous group of fired strips with a larger peak i
 	      //within maxneighbors of peak i, AND either its amplitude is less than 25% of peak i (or whatever the threshold is)
 	      // or the excess of peak j above the "valley" in between peaks i and j is less than about 2.5*50 channels = 125 channels
+	      // or the 
 	      //and therefore deemed not significant
 	      //these thresholds should be made user-configurable.
 
+	      //The naive approximation is that the cluster shape is a Lorentzian of some width: 
+	      //expected ratio 
 	      //MAXIMUM NOT "significant": annihilate:
 	      localmaxima.erase(stripj);
 	      islocalmax[stripj] = false;
@@ -786,7 +798,8 @@ int find_clusters_by_module_newnew( moduledata_t mod_data, clusterdata_t &clust_
    
     }
 
-    if( sumADC >= thresh_clustersum ){ //don't use if the cluster ADC sum is below threshold:
+    // if( sumADC >= thresh_clustersum ){ //don't use if the cluster ADC sum is below threshold:
+    if( true ){
     
       clust_data.nstripx.push_back( nstrips_maxima );
       clust_data.ixstriplo.push_back( striplo );
@@ -887,22 +900,31 @@ int find_clusters_by_module_newnew( moduledata_t mod_data, clusterdata_t &clust_
 	  //Check if these two maxima are in a contiguous grouping of strips:
 	  bool contiguous = true;
 	  //loop over all strips between i and j and check that they all fired:
-	  double valley = -1.0; 
+	  double valley = -1.0;
+	  int minstrip = -1;
 	  for( int strip=std::min(stripi,stripj)+1; strip<=std::max(stripi,stripj)-1; strip++ ){
 	    //if any strip in between these two local maxima did NOT fire, contiguous = false:
 	    if( mod_data.ystrips.find( strip ) == mod_data.ystrips.end() ) {
 	      contiguous = false;
 	    } else if( valley < 0. || mod_data.ADCsum_ystrips_goodsamp[strip] < valley ){
 	      valley = mod_data.ADCsum_ystrips_goodsamp[strip];
+	      minstrip = strip;
 	    }
 	  }
 
 	  int nsamplesinsum = std::min(nADCsamples,sampmax_accept-sampmin_accept+1);
 
 	  double sigma_sum = sqrt(double(nsamplesinsum))*sigma_sample; // about 50 ADC channels
-	
+
+	  double fracexpect_i = 1.0/(1.0 + pow( (minstrip - stripi)*mod_vstrip_pitch[module]/sigma_hitshape, 2) );
+	  double fracexpect_j = 1.0/(1.0 + pow( (minstrip - stripj)*mod_vstrip_pitch[module]/sigma_hitshape, 2) );
+
+	  double valleyexpect = fracexpect_i*peaki + fracexpect_j*peakj;
+	  
 	  if( contiguous ){ //Check significance of overlapping maximum:
-	    if( peakj/peaki < thresh_2ndmax_fraction || peakj - valley <= thresh_2ndmax_nsigma*sigma_sum ){
+	    if( peakj/peaki < thresh_2ndmax_fraction || peakj - valley <= thresh_2ndmax_nsigma*sigma_sum ||
+		peaki - valley <= thresh_2ndmax_nsigma*sigma_sum ||
+		valley - valleyexpect > thresh_2ndmax_nsigma*sigma_sum ){
 	      //If we make it here, it means that peak j occurs within a contiguous group of fired strips with a larger peak i
 	      //within maxneighbors of peak i, AND either its amplitude is less than 25% of peak i (or whatever the threshold is)
 	      // or the excess of peak j above the "valley" in between peaks i and j is less than about 2.5*50 channels = 125 channels
@@ -977,8 +999,8 @@ int find_clusters_by_module_newnew( moduledata_t mod_data, clusterdata_t &clust_
    
     }
 
-    if( sumADC >= thresh_clustersum ){
-      
+    //if( sumADC >= thresh_clustersum ){
+    if( true ){
       clust_data.nstripy.push_back( nstrips_maxima );
       clust_data.iystriplo.push_back( striplo );
       clust_data.iystriphi.push_back( striphi );
