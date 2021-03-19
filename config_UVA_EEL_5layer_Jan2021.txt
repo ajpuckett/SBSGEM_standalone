@@ -87,4 +87,5 @@ tstripcut_nsigma 10000.0
 NMAX 10000000
 TrackingAlgorithm 0
 maxhitcombos 200000
+NMAX 100000
 endconfig

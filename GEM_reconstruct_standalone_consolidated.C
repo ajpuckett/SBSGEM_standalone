@@ -107,7 +107,7 @@ double thresh_clustersum = 1000.0; //threshold on the summed ADCs of all strips 
 
 double sigma_sample = 20.0; //Sigma of ADC sample noise; used to get threshold for overlapping cluster condition
 double thresh_2ndmax_nsigma = 5.0; //Number of sigmas above noise level to flag a second maximum in a contiguous grouping of strips. For this condition to occur, the 
-double thresh_2ndmax_fraction = 0.25; //threshold to flag 2nd maximum as a fraction of first maximum
+double thresh_2ndmax_fraction = 0.2; //threshold to flag 2nd maximum as a fraction of first maximum
 double sigma_hitpos=0.15; //mm
 double TrackMaxSlopeX = 1.0; //
 double TrackMaxSlopeY = 0.5;
@@ -660,70 +660,64 @@ int find_clusters_by_module_newnew( moduledata_t mod_data, clusterdata_t &clust_
     }
   }
 
-  //Experimental:
-  //this loop compares every maximum to every other maximum and eliminates the smaller overlapping ones that aren't "significant"
-  //Always keeps the biggest one:
-  for( int imax=0; imax<sortedmaxima.size(); imax++ ){
-    for( int jmax=imax+1; jmax<sortedmaxima.size(); jmax++ ){
-      int stripi = sortedmaxima[imax];
-      int stripj = sortedmaxima[jmax];
+  //Better idea: calculate the "prominence" of each peak other than the highest one, and apply a threshold
+  //on the prominence to keep the peak as a seed for an independent cluster:
 
-      //status peaks i and/or j may have changed:
-      if( islocalmax[stripi] && islocalmax[stripj] ){
-      
-	double peaki = ADCmaxima[stripi];
-	double peakj = ADCmaxima[stripj];
-      
-	//We know because of the sorting, that ADC[imax] > ADC[jmax] 
-	if( abs( stripi-stripj ) <= maxneighborsX ){ //potential overlap
-	  //we know stripi - stripj must be >= 2:
-	  //Check if these two maxima are in a contiguous grouping of strips:
-	  bool contiguous = true;
-	  //loop over all strips between i and j and check that they all fired:
-	  double valley = -1.0;
-	  int minstrip = -1;
-	  for( int strip=std::min(stripi,stripj)+1; strip<=std::max(stripi,stripj)-1; strip++ ){
-	    //if any strip in between these two local maxima did NOT fire, contiguous = false:
-	    if( mod_data.xstrips.find( strip ) == mod_data.xstrips.end() ) {
-	      contiguous = false;
-	    } else if( valley < 0. || mod_data.ADCsum_xstrips_goodsamp[strip] < valley ){
-	      valley = mod_data.ADCsum_xstrips_goodsamp[strip];
-	      minstrip = strip;
-	    }
-	  }
+  for( int imax=0; imax<sortedmaxima.size(); imax++ ){ //these maxima 
+    int stripmax = sortedmaxima[imax]; 
+    double prominence = ADCmaxima[stripmax];
+    
+    int striplo=stripmax,striphi=stripmax;
 
-	  int nsamplesinsum = std::min(nADCsamples,sampmax_accept-sampmin_accept+1);
+    double ADCminright = ADCmaxima[stripmax];
+    bool higherpeakright=false;
+    while( mod_data.xstrips.find(striphi+1) != mod_data.xstrips.end() ){
+      striphi++;
+      if( mod_data.ADCsum_xstrips_goodsamp[striphi] < ADCminright ){
+	ADCminright = mod_data.ADCsum_xstrips_goodsamp[striphi];
+      }
 
-	  double sigma_sum = sqrt(double(nsamplesinsum))*sigma_sample; // about 50 ADC channels
-
-	  double fracexpect_i = 1.0/(1.0 + pow( (minstrip - stripi)*mod_ustrip_pitch[module]/sigma_hitshape, 2) );
-	  double fracexpect_j = 1.0/(1.0 + pow( (minstrip - stripj)*mod_ustrip_pitch[module]/sigma_hitshape, 2) );
-
-	  double valleyexpect = fracexpect_i*peaki + fracexpect_j*peakj;
-	  
-	  if( contiguous ){ //Check significance of overlapping maximum:
-	    if( peakj/peaki < thresh_2ndmax_fraction || peakj - valley <= thresh_2ndmax_nsigma*sigma_sum ||
-		peaki - valley <= thresh_2ndmax_nsigma*sigma_sum ||
-		valley - valleyexpect > thresh_2ndmax_nsigma*sigma_sum ){
-	      //If we make it here, it means that peak j occurs within a contiguous group of fired strips with a larger peak i
-	      //within maxneighbors of peak i, AND either its amplitude is less than 25% of peak i (or whatever the threshold is)
-	      // or the excess of peak j above the "valley" in between peaks i and j is less than about 2.5*50 channels = 125 channels
-	      // or the 
-	      //and therefore deemed not significant
-	      //these thresholds should be made user-configurable.
-
-	      //The naive approximation is that the cluster shape is a Lorentzian of some width: 
-	      //expected ratio 
-	      //MAXIMUM NOT "significant": annihilate:
-	      localmaxima.erase(stripj);
-	      islocalmax[stripj] = false;
-	      ADCmaxima.erase(stripj);
-	    }
-	  }
-	}
+      if( islocalmax[striphi] && ADCmaxima[striphi] > ADCmaxima[stripmax] ){ //then this peak is in a contiguous group with another higher peak to the right:
+	higherpeakright=true;
       }
     }
+
+    double ADCminleft = ADCmaxima[stripmax];
+    bool higherpeakleft = false;
+    while( mod_data.xstrips.find(striplo-1) != mod_data.xstrips.end() ){
+      striplo--;
+      if( mod_data.ADCsum_xstrips_goodsamp[striplo] < ADCminleft ){
+	ADCminleft = mod_data.ADCsum_xstrips_goodsamp[striplo];
+      }
+
+      if( islocalmax[striplo] && ADCmaxima[striplo] > ADCmaxima[stripmax] ){ //then this peak is in a contiguous groupd of strips with another higher peak to the left
+	higherpeakleft=true;
+      }
+    }
+
+    // if this peak is contiguous with another higher peak to the left or the right, calculate prominence,
+    // and reject if the prominence of this peak is below the theshold for significance, or below
+    // a certain minimum percentage of the peak height:
+    
+    int nsamplesinsum = std::min(nADCsamples,sampmax_accept-sampmin_accept+1);
+
+    double sigma_sum = sqrt(double(nsamplesinsum))*sigma_sample; // about 50 ADC channels
+
+    if( !higherpeakleft ) ADCminleft = 0.0;
+    if( !higherpeakright ) ADCminright = 0.0;
+    
+    if( higherpeakright || higherpeakleft ){ //contiguous with higher peaks on either the left or the right or both:
+      prominence = ADCmaxima[stripmax] - std::max( ADCminleft, ADCminright );
+      if( prominence < thresh_2ndmax_nsigma * sigma_sum ||
+	  prominence < thresh_2ndmax_fraction ){
+	localmaxima.erase( stripmax );
+	islocalmax[stripmax] = false;
+	ADCmaxima.erase( stripmax );
+      }
+    } 
   }
+  
+  
   
   //how do we deal with overlap? One idea is to collect all strips within +/- maxneighbors of each local max,
   //and then come up with a formula for assigning a fractional contribution of each nearby local maximum to each strip
@@ -882,69 +876,62 @@ int find_clusters_by_module_newnew( moduledata_t mod_data, clusterdata_t &clust_
     }
   }
 
-  //Experimental:
-  //this loop compares every maximum to every other maximum and eliminates the smaller overlapping ones that aren't "significant"
-  //Always keeps the biggest one:
-  for( int imax=0; imax<sortedmaxima.size(); imax++ ){
-    for( int jmax=imax+1; jmax<sortedmaxima.size(); jmax++ ){
-      int stripi = sortedmaxima[imax];
-      int stripj = sortedmaxima[jmax];
+  //Better idea: calculate the "prominence" of each peak other than the highest one, and apply a threshold
+  //on the prominence to keep the peak as a seed for an independent cluster:
 
-      //status peaks i and/or j may have changed:
-      if( islocalmax[stripi] && islocalmax[stripj] ){
-      
-	double peaki = ADCmaxima[stripi];
-	double peakj = ADCmaxima[stripj];
-      
-	//We know because of the sorting, that ADC[imax] > ADC[jmax] 
-	if( abs( stripi-stripj ) <= maxneighborsY ){ //potential overlap
-	  //we know stripi - stripj must be >= 2:
-	  //Check if these two maxima are in a contiguous grouping of strips:
-	  bool contiguous = true;
-	  //loop over all strips between i and j and check that they all fired:
-	  double valley = -1.0;
-	  int minstrip = -1;
-	  for( int strip=std::min(stripi,stripj)+1; strip<=std::max(stripi,stripj)-1; strip++ ){
-	    //if any strip in between these two local maxima did NOT fire, contiguous = false:
-	    if( mod_data.ystrips.find( strip ) == mod_data.ystrips.end() ) {
-	      contiguous = false;
-	    } else if( valley < 0. || mod_data.ADCsum_ystrips_goodsamp[strip] < valley ){
-	      valley = mod_data.ADCsum_ystrips_goodsamp[strip];
-	      minstrip = strip;
-	    }
-	  }
+  for( int imax=0; imax<sortedmaxima.size(); imax++ ){ //these maxima 
+    int stripmax = sortedmaxima[imax]; 
+    double prominence = ADCmaxima[stripmax];
+    
+    int striplo=stripmax,striphi=stripmax;
 
-	  int nsamplesinsum = std::min(nADCsamples,sampmax_accept-sampmin_accept+1);
+    double ADCminright = ADCmaxima[stripmax];
+    bool higherpeakright=false;
+    while( mod_data.ystrips.find(striphi+1) != mod_data.ystrips.end() ){
+      striphi++;
+      if( mod_data.ADCsum_ystrips_goodsamp[striphi] < ADCminright ){
+	ADCminright = mod_data.ADCsum_ystrips_goodsamp[striphi];
+      }
 
-	  double sigma_sum = sqrt(double(nsamplesinsum))*sigma_sample; // about 50 ADC channels
-
-	  double fracexpect_i = 1.0/(1.0 + pow( (minstrip - stripi)*mod_vstrip_pitch[module]/sigma_hitshape, 2) );
-	  double fracexpect_j = 1.0/(1.0 + pow( (minstrip - stripj)*mod_vstrip_pitch[module]/sigma_hitshape, 2) );
-
-	  double valleyexpect = fracexpect_i*peaki + fracexpect_j*peakj;
-	  
-	  if( contiguous ){ //Check significance of overlapping maximum:
-	    if( peakj/peaki < thresh_2ndmax_fraction || peakj - valley <= thresh_2ndmax_nsigma*sigma_sum ||
-		peaki - valley <= thresh_2ndmax_nsigma*sigma_sum ||
-		valley - valleyexpect > thresh_2ndmax_nsigma*sigma_sum ){
-	      //If we make it here, it means that peak j occurs within a contiguous group of fired strips with a larger peak i
-	      //within maxneighbors of peak i, AND either its amplitude is less than 25% of peak i (or whatever the threshold is)
-	      // or the excess of peak j above the "valley" in between peaks i and j is less than about 2.5*50 channels = 125 channels
-	      //and therefore deemed not significant
-	      //these thresholds should be made user-configurable.
-
-	      //MAXIMUM NOT "significant": annihilate:
-	      localmaxima.erase(stripj);
-	      islocalmax[stripj] = false;
-	      ADCmaxima.erase(stripj);
-	    }
-	  }
-	}
+      if( islocalmax[striphi] && ADCmaxima[striphi] > ADCmaxima[stripmax] ){ //then this peak is in a contiguous group with another higher peak to the right:
+	higherpeakright=true;
       }
     }
+
+    double ADCminleft = ADCmaxima[stripmax];
+    bool higherpeakleft = false;
+    while( mod_data.ystrips.find(striplo-1) != mod_data.ystrips.end() ){
+      striplo--;
+      if( mod_data.ADCsum_ystrips_goodsamp[striplo] < ADCminleft ){
+	ADCminleft = mod_data.ADCsum_ystrips_goodsamp[striplo];
+      }
+
+      if( islocalmax[striplo] && ADCmaxima[striplo] > ADCmaxima[stripmax] ){ //then this peak is in a contiguous groupd of strips with another higher peak to the left
+	higherpeakleft=true;
+      }
+    }
+
+    // if this peak is contiguous with another higher peak to the left or the right, calculate prominence,
+    // and reject if the prominence of this peak is below the theshold for significance, or below
+    // a certain minimum percentage of the peak height:
+    
+    int nsamplesinsum = std::min(nADCsamples,sampmax_accept-sampmin_accept+1);
+
+    double sigma_sum = sqrt(double(nsamplesinsum))*sigma_sample; // about 50 ADC channels
+
+    if( !higherpeakleft ) ADCminleft = 0.0;
+    if( !higherpeakright ) ADCminright = 0.0;
+    
+    if( higherpeakright || higherpeakleft ){ //contiguous with higher peaks on either the left or the right or both:
+      prominence = ADCmaxima[stripmax] - std::max( ADCminleft, ADCminright );
+      if( prominence < thresh_2ndmax_nsigma * sigma_sum ||
+	  prominence < thresh_2ndmax_fraction ){
+	localmaxima.erase( stripmax );
+	islocalmax[stripmax] = false;
+	ADCmaxima.erase( stripmax );
+      }
+    } 
   }
-
-
   
   for( set<int>::iterator iy = localmaxima.begin(); iy != localmaxima.end(); ++iy ){
     int stripmax = *iy;
@@ -3063,26 +3050,26 @@ void find_tracks( map<int,clusterdata_t> mod_clusters, trackdata_t &trackdata ){
 	    trackdata.Chi2NDFtrack.push_back( bestchi2 );
 
 	    //Experimental: eliminate all other hits containing either the same X maximum or same Y maximum as a hit already used in a track.
-	    // for( int ihittemp=0; ihittemp<hitlisttemp.size(); ihittemp++ ){
-	    //   int modtemp = modlisttemp[ihittemp];
-	    //   int iclusttemp = hitlisttemp[ihittemp]; //position in 2D cluster array:
-	    //   int ixtemp = mod_clusters[modtemp].ixclust2D[iclusttemp];
-	    //   int iytemp = mod_clusters[modtemp].iyclust2D[iclusttemp];
-	    //   int layertemp = mod_layer[modtemp];
+	    for( int ihittemp=0; ihittemp<hitlisttemp.size(); ihittemp++ ){
+	      int modtemp = modlisttemp[ihittemp];
+	      int iclusttemp = hitlisttemp[ihittemp]; //position in 2D cluster array:
+	      int ixtemp = mod_clusters[modtemp].ixclust2D[iclusttemp];
+	      int iytemp = mod_clusters[modtemp].iyclust2D[iclusttemp];
+	      int layertemp = mod_layer[modtemp];
 
-	    //   for( int jhittemp=0; jhittemp<N2Dhits_layer[layertemp]; jhittemp++ ){
-	    // 	int modj = modindexhit2D[layertemp][jhittemp];
-	    // 	int clustj = clustindexhit2D[layertemp][jhittemp];
-	    // 	if( modj == modtemp ){
-	    // 	  int ixj = mod_clusters[modj].ixclust2D[clustj];
-	    // 	  int iyj = mod_clusters[modj].iyclust2D[clustj];
-	    // 	  if( ixj == ixtemp || iyj == iytemp ){
-	    // 	    hitused2D[layertemp][jhittemp] = true;
-	    // 	  }
-	    // 	}
-	    //   }
+	      for( int jhittemp=0; jhittemp<N2Dhits_layer[layertemp]; jhittemp++ ){
+	    	int modj = modindexhit2D[layertemp][jhittemp];
+	    	int clustj = clustindexhit2D[layertemp][jhittemp];
+	    	if( modj == modtemp ){
+	    	  int ixj = mod_clusters[modj].ixclust2D[clustj];
+	    	  int iyj = mod_clusters[modj].iyclust2D[clustj];
+	    	  if( ixj == ixtemp || iyj == iytemp ){
+	    	    hitused2D[layertemp][jhittemp] = true;
+	    	  }
+	    	}
+	      }
 	      
-	    // }
+	    }
 	    
 	    trackdata.ntracks++;
 	  }
