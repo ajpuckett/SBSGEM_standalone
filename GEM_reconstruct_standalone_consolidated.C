@@ -663,6 +663,7 @@ int find_clusters_by_module_newnew( moduledata_t mod_data, clusterdata_t &clust_
   //Better idea: calculate the "prominence" of each peak other than the highest one, and apply a threshold
   //on the prominence to keep the peak as a seed for an independent cluster:
 
+  //This is an incorrect calculation of prominence: we need to find the lowest point BETWEEN this maximum and the next higher point
   for( int imax=0; imax<sortedmaxima.size(); imax++ ){ //these maxima 
     int stripmax = sortedmaxima[imax]; 
     double prominence = ADCmaxima[stripmax];
@@ -671,27 +672,33 @@ int find_clusters_by_module_newnew( moduledata_t mod_data, clusterdata_t &clust_
 
     double ADCminright = ADCmaxima[stripmax];
     bool higherpeakright=false;
+    int peakright=-1;
+    
     while( mod_data.xstrips.find(striphi+1) != mod_data.xstrips.end() ){
       striphi++;
-      if( mod_data.ADCsum_xstrips_goodsamp[striphi] < ADCminright ){
+      if( mod_data.ADCsum_xstrips_goodsamp[striphi] < ADCminright && !higherpeakright ){ //as long as we haven't yet found a higher peak to the right, this is the lowest point between the current maximum and the next higher peak to the right:
 	ADCminright = mod_data.ADCsum_xstrips_goodsamp[striphi];
       }
 
       if( islocalmax[striphi] && ADCmaxima[striphi] > ADCmaxima[stripmax] ){ //then this peak is in a contiguous group with another higher peak to the right:
 	higherpeakright=true;
+	peakright = striphi;
       }
     }
 
     double ADCminleft = ADCmaxima[stripmax];
     bool higherpeakleft = false;
+    int peakleft=-1;
+    
     while( mod_data.xstrips.find(striplo-1) != mod_data.xstrips.end() ){
       striplo--;
-      if( mod_data.ADCsum_xstrips_goodsamp[striplo] < ADCminleft ){
+      if( mod_data.ADCsum_xstrips_goodsamp[striplo] < ADCminleft && !higherpeakleft ){ //as long as we haven't yet found a higher peak to the right, this is the lowest point between the current maximum and the next higher peak to the right:
 	ADCminleft = mod_data.ADCsum_xstrips_goodsamp[striplo];
       }
 
       if( islocalmax[striplo] && ADCmaxima[striplo] > ADCmaxima[stripmax] ){ //then this peak is in a contiguous groupd of strips with another higher peak to the left
 	higherpeakleft=true;
+	peakleft = striplo;
       }
     }
 
@@ -703,13 +710,24 @@ int find_clusters_by_module_newnew( moduledata_t mod_data, clusterdata_t &clust_
 
     double sigma_sum = sqrt(double(nsamplesinsum))*sigma_sample; // about 50 ADC channels
 
+    cout << "sigma_sum = " << sigma_sum << endl;
+    
     if( !higherpeakleft ) ADCminleft = 0.0;
     if( !higherpeakright ) ADCminright = 0.0;
     
     if( higherpeakright || higherpeakleft ){ //contiguous with higher peaks on either the left or the right or both:
       prominence = ADCmaxima[stripmax] - std::max( ADCminleft, ADCminright );
-      if( prominence < thresh_2ndmax_nsigma * sigma_sum ||
-	  prominence < thresh_2ndmax_fraction ){
+
+      cout << "ADC max, peak prominence = " << ADCmaxima[stripmax] << ", " << prominence << endl;
+      
+      bool peak_close=false;
+      if( higherpeakleft && abs( peakleft - stripmax ) <= 2*maxneighborsX ) peak_close = true;
+      if( higherpeakright && abs( peakright - stripmax ) <= 2*maxneighborsX ) peak_close = true;
+
+      //peak_close = true;
+      
+      if( (prominence < thresh_2ndmax_nsigma * sigma_sum ||
+	   prominence/ADCmaxima[stripmax] < thresh_2ndmax_fraction) && peak_close ){
 	localmaxima.erase( stripmax );
 	islocalmax[stripmax] = false;
 	ADCmaxima.erase( stripmax );
@@ -761,6 +779,8 @@ int find_clusters_by_module_newnew( moduledata_t mod_data, clusterdata_t &clust_
     double sumx = 0.0, sumx2 = 0.0, sumADC = 0.0, sumt = 0.0, sumt2 = 0.0;
 
     map<int,double> splitfraction;
+
+    vector<double> stripADCsum(nstrips_maxima);
     
     for( int istrip=striplo; istrip<=striphi; istrip++ ){
       int nmax_strip = 1;
@@ -785,6 +805,8 @@ int find_clusters_by_module_newnew( moduledata_t mod_data, clusterdata_t &clust_
       double ulocal = ( istrip + 0.5 - 0.5*mod_nstripsu[module] ) * mod_ustrip_pitch[module];
       double ADCstrip = mod_data.ADCsum_xstrips_goodsamp[istrip]*ADCfrac_strip;
       double tstrip = mod_data.Tmean_xstrips[istrip];
+
+      stripADCsum[istrip-striplo] = ADCstrip;
       
       sumx += ulocal * ADCstrip;
       sumADC += ADCstrip;
@@ -796,7 +818,9 @@ int find_clusters_by_module_newnew( moduledata_t mod_data, clusterdata_t &clust_
 
     // if( sumADC >= thresh_clustersum ){ //don't use if the cluster ADC sum is below threshold:
     if( true ){
-    
+
+      clust_data.xstripADCsum.push_back( stripADCsum );
+      
       clust_data.nstripx.push_back( nstrips_maxima );
       clust_data.ixstriplo.push_back( striplo );
       clust_data.ixstriphi.push_back( striphi );
@@ -817,6 +841,8 @@ int find_clusters_by_module_newnew( moduledata_t mod_data, clusterdata_t &clust_
       }
 
       clust_data.ADCsamp_xclust.push_back( xADCsamples );
+
+      
       
       clust_data.nclustx++;
     }
@@ -887,27 +913,31 @@ int find_clusters_by_module_newnew( moduledata_t mod_data, clusterdata_t &clust_
 
     double ADCminright = ADCmaxima[stripmax];
     bool higherpeakright=false;
+    int peakright = -1; 
     while( mod_data.ystrips.find(striphi+1) != mod_data.ystrips.end() ){
       striphi++;
-      if( mod_data.ADCsum_ystrips_goodsamp[striphi] < ADCminright ){
+      if( mod_data.ADCsum_ystrips_goodsamp[striphi] < ADCminright && !higherpeakright ){
 	ADCminright = mod_data.ADCsum_ystrips_goodsamp[striphi];
       }
 
       if( islocalmax[striphi] && ADCmaxima[striphi] > ADCmaxima[stripmax] ){ //then this peak is in a contiguous group with another higher peak to the right:
 	higherpeakright=true;
+	peakright = striphi;
       }
     }
 
     double ADCminleft = ADCmaxima[stripmax];
     bool higherpeakleft = false;
+    int peakleft = -1;
     while( mod_data.ystrips.find(striplo-1) != mod_data.ystrips.end() ){
       striplo--;
-      if( mod_data.ADCsum_ystrips_goodsamp[striplo] < ADCminleft ){
+      if( mod_data.ADCsum_ystrips_goodsamp[striplo] < ADCminleft && !higherpeakleft ){
 	ADCminleft = mod_data.ADCsum_ystrips_goodsamp[striplo];
       }
 
       if( islocalmax[striplo] && ADCmaxima[striplo] > ADCmaxima[stripmax] ){ //then this peak is in a contiguous groupd of strips with another higher peak to the left
 	higherpeakleft=true;
+	peakleft = striplo;
       }
     }
 
@@ -924,8 +954,13 @@ int find_clusters_by_module_newnew( moduledata_t mod_data, clusterdata_t &clust_
     
     if( higherpeakright || higherpeakleft ){ //contiguous with higher peaks on either the left or the right or both:
       prominence = ADCmaxima[stripmax] - std::max( ADCminleft, ADCminright );
-      if( prominence < thresh_2ndmax_nsigma * sigma_sum ||
-	  prominence < thresh_2ndmax_fraction ){
+
+      bool peak_close=false;
+      if( higherpeakleft && abs( peakleft - stripmax ) <= 2*maxneighborsY ) peak_close = true;
+      if( higherpeakright && abs( peakright - stripmax ) <= 2*maxneighborsY ) peak_close = true;
+      
+      if( (prominence < thresh_2ndmax_nsigma * sigma_sum ||
+	   prominence/ADCmaxima[stripmax] < thresh_2ndmax_fraction) && peak_close ){
 	localmaxima.erase( stripmax );
 	islocalmax[stripmax] = false;
 	ADCmaxima.erase( stripmax );
@@ -955,6 +990,8 @@ int find_clusters_by_module_newnew( moduledata_t mod_data, clusterdata_t &clust_
     double sumy = 0.0, sumy2 = 0.0, sumADC = 0.0, sumt = 0.0, sumt2 = 0.0;
 
     map<int,double> splitfraction;
+
+    vector<double> stripADCsum(nstrips_maxima);
     
     for( int istrip=striplo; istrip<=striphi; istrip++ ){
       int nmax_strip = 1;
@@ -979,6 +1016,8 @@ int find_clusters_by_module_newnew( moduledata_t mod_data, clusterdata_t &clust_
       double vlocal = ( istrip + 0.5 - 0.5*mod_nstripsv[module] ) * mod_vstrip_pitch[module];
       double ADCstrip = mod_data.ADCsum_ystrips_goodsamp[istrip]*ADCfrac_strip;
       double tstrip = mod_data.Tmean_ystrips[istrip];
+
+      stripADCsum[istrip-striplo] = ADCstrip;
       
       sumy += vlocal * ADCstrip;
       sumADC += ADCstrip;
@@ -990,6 +1029,8 @@ int find_clusters_by_module_newnew( moduledata_t mod_data, clusterdata_t &clust_
 
     //if( sumADC >= thresh_clustersum ){
     if( true ){
+      clust_data.ystripADCsum.push_back( stripADCsum );
+      
       clust_data.nstripy.push_back( nstrips_maxima );
       clust_data.iystriplo.push_back( striplo );
       clust_data.iystriphi.push_back( striphi );
@@ -3751,10 +3792,14 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
     if( mod_RYX.find( imodule ) == mod_RYX.end() ) mod_RYX[imodule] = 1.0;
   }
   
-  
+  //Is the size of this canvas biased against people with low-resolution monitors? Probably yes.
   TCanvas *c1 = new TCanvas("c1","c1",1600,1500);
   // Let's retool this event display; instead, let's divide the canvas by layers and modules instead of by layer alone:  
   c1->Divide( maxnmodperlayer,nlayers,.001,.001);
+
+  //Now let's create a histogram to display the strip ADC histos event by event:
+  TCanvas *c2 = new TCanvas("c2","c2",2000,1500);
+  c2->Divide( 2, nmodules, .001,.001);
   
   TCanvas *c_proj = new TCanvas("c1_proj","c1_proj",1200,800);
   c_proj->Divide(2,1);
@@ -3805,7 +3850,57 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
   // } //else {
   //   //c1->Delete();
   //   //}
+
+  //Now suppose we want to plot the strip signals (U and V) by module to debug clustering and cluster-splitting:
+
+  //Histograms for ALL strips:
+  TClonesArray *hmod_ADC_vs_Xstrip = new TClonesArray("TH1D",nmodules);
+  TClonesArray *hmod_ADC_vs_Ystrip = new TClonesArray("TH1D",nmodules);
+  //Histograms for strips included in good 2D clusters:
+  TClonesArray *hmod_ADC_vs_Xstrip_good = new TClonesArray("TH1D",nmodules);
+  TClonesArray *hmod_ADC_vs_Ystrip_good = new TClonesArray("TH1D",nmodules);
+
+  for( int imod=0; imod<nmodules; imod++ ){
+    TString histname;
+    histname.Form("hmod_ADC_vs_Xstrip_module%d",imod);
+    TString histtitle; 
+    histtitle.Form("X strips, Module %d", imod );
+
+    int nbins = mod_nstripsu[imod];
+    double min=-0.5, max=nbins-0.5;
     
+    new( (*hmod_ADC_vs_Xstrip)[imod] ) TH1D( histname.Data(), histtitle.Data(), nbins, min, max );
+
+    histname.Form("hmod_ADC_vs_Ystrip_module%d",imod);
+    histtitle.Form("Y strips, Module %d", imod );
+
+    nbins = mod_nstripsv[imod];
+    min = -0.5;
+    max = nbins-0.5;
+    
+    new( (*hmod_ADC_vs_Ystrip)[imod] ) TH1D( histname.Data(), histtitle.Data(), nbins, min, max );
+
+    //now repeat for the "good" clusters:
+    histname.Form("hmod_ADC_vs_Xstrip_good_module%d", imod );
+    histtitle.Form("X strips, Module %d, good clusters", imod );
+
+    nbins = mod_nstripsu[imod];
+    min=-0.5;
+    max=nbins-0.5;
+    new( (*hmod_ADC_vs_Xstrip_good)[imod] ) TH1D( histname.Data(), histtitle.Data(), nbins, min, max );
+
+    //now repeat for the "good" clusters:
+    histname.Form("hmod_ADC_vs_Ystrip_good_module%d", imod );
+    histtitle.Form("Y strips, Module %d, good clusters", imod );
+
+    nbins = mod_nstripsv[imod];
+    min = -0.5;
+    max = nbins-0.5;
+
+    new( (*hmod_ADC_vs_Ystrip_good)[imod] ) TH1D( histname.Data(), histtitle.Data(), nbins, min, max );
+    
+    
+  }
   
   TChain *C = new TChain("GEMHit");
 
@@ -4679,9 +4774,20 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
 	
 	for( int imodule=0; imodule<nmodules; imodule++ ){
 	  ( (TH2D*) (*hframe_modules)[imodule] )->Reset();
+
+	  ( (TH1D*) (*hmod_ADC_vs_Xstrip)[imodule] )->Reset();
+	  ( (TH1D*) (*hmod_ADC_vs_Ystrip)[imodule] )->Reset();
+
+	  ( (TH1D*) (*hmod_ADC_vs_Xstrip_good)[imodule] )->Reset();
+	  ( (TH1D*) (*hmod_ADC_vs_Ystrip_good)[imodule] )->Reset();
+	  
 	}
 	( (TH2D*) (proj_xz) )->Reset();
 	( (TH2D*) (proj_yz) )->Reset();
+
+
+	
+	
       }
 
       //we should probably restructure the earlier part of the code to eliminate the overhead of copying all this info:
@@ -5385,6 +5491,9 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
 	    TVector3 uperphat = zaxis.Cross(uhat).Unit();
 	    
 	    TVector3 strip_center_pos = ulocal*uhat;
+
+	    //Fill strip ADC histogram. We'll need a canvas for this later
+	    ( (TH1D *) (*hmod_ADC_vs_Xstrip)[module] )->Fill( strip, ModData[module].ADCsum_xstrips_goodsamp[strip] );
 	    
 	    if( fabs( strip_center_pos.X() ) <= mod_Lx[module]/2.0 &&
 		fabs( strip_center_pos.Y() ) <= mod_Ly[module]/2.0 ){
@@ -5475,6 +5584,10 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
 	    int strip = *istrip;
 	    //int binx = strip + 1280*( module % 3 );
 
+	    //Fill strip ADC histogram. We'll need a canvas for this later
+	    ( (TH1D *) (*hmod_ADC_vs_Ystrip)[module] )->Fill( strip, ModData[module].ADCsum_ystrips_goodsamp[strip] );
+	    
+	    
 	    //double xlocal = (strip+0.5 - 0.5*nstripsx)*0.4;
 	    //Local U coordinate of the center of the strip according to the convention:
 	    double vlocal = (strip + 0.5 - 0.5*mod_nstripsv[module])*mod_vstrip_pitch[module];
@@ -5588,6 +5701,13 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
 	    }
 	    
 	  }
+
+	  //Now let's draw the strip ADC histograms:
+	  c2->cd(1+2*module);
+	  ( (TH1D*) (*hmod_ADC_vs_Xstrip)[module] )->Draw("hist");
+	  c2->cd(2+2*module);
+	  ( (TH1D*) (*hmod_ADC_vs_Ystrip)[module] )->Draw("hist");
+	  
 	}
 	// hframe1->SetMinimum(0);
 	// hframe2->SetMinimum(0);
@@ -5639,6 +5759,9 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
 	  int module = *imod;
 	  int layer = mod_layer[module];
 	  clusterdata_t clusttemp = mod_clusters[module];
+
+	  int mstyle_stripADC[] = {2,3,4,5,20,21,22,23,25,25};
+	  int mcol_stripADC[] = {1,2,4,6,8,9,30,28,40};
 	  
 	  for( int iclust=0; iclust<clusttemp.nclust2D; iclust++ ){
 	    
@@ -5684,7 +5807,51 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
 	      gPad->Update();
 	      //gSystem->ProcessEvents();
 	      c1->Update();
+
+	      
+	      
 	    }
+
+	    //Now also draw the strip signals for this hit: We may eventually wish to only draw clusters that passed 2D filtering criteria and/or ended up on good
+	    //tracks, but we would need to modify the cluster data structure to make that work:
+	    for( int ixclust = 0; ixclust<clusttemp.nclustx; ixclust++ ){
+	      TMarker MstripADC;
+	      MstripADC.SetMarkerStyle( mstyle_stripADC[ixclust%10] );
+	      MstripADC.SetMarkerColor( mcol_stripADC[ixclust%9] );
+	      
+	      int stripcount=0;
+	      for( int istripx=clusttemp.ixstriplo[ixclust]; istripx<=clusttemp.ixstriphi[ixclust]; istripx++ ){
+		double xADC = clusttemp.xstripADCsum[ixclust][stripcount];
+		
+		c2->cd( 1 + 2*module );
+		MstripADC.DrawMarker( istripx,xADC );
+		stripcount++;
+		//( (*TH1D) (*hmod_ADC_vs_Xstrip_good)[module] )->Fill( istripx, xADC );
+	      }
+	    }
+
+	    for( int iyclust = 0; iyclust<clusttemp.nclusty; iyclust++ ){
+	      TMarker MstripADC;
+	      MstripADC.SetMarkerStyle( mstyle_stripADC[iyclust%10] );
+	      MstripADC.SetMarkerColor( mcol_stripADC[iyclust%9] );
+
+	      int stripcount = 0;
+	      for( int istripy=clusttemp.iystriplo[iyclust]; istripy<=clusttemp.iystriphi[iyclust]; istripy++ ){
+		double yADC = clusttemp.ystripADCsum[iyclust][stripcount];
+
+		c2->cd( 2 + 2*module );
+		MstripADC.DrawMarker( istripy,yADC );
+		stripcount++;
+	      }
+
+	      gPad->Modified();
+	      gPad->Update();
+	      //gSystem->ProcessEvents();
+	      c1->Update();
+	      
+	      //( (*TH1D) (*hmod_ADC_vs_Xstrip_good)[module] )->Fill( istripx, xADC );
+	    }
+	    
 	  }
 	}
       
@@ -5767,12 +5934,17 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
 	}
 	gSystem->ProcessEvents();
       
-	cout << "press any key to continue (q to quit):" << endl;
+	cout << "press any key to continue (q to quit, p to print):" << endl;
 	TString reply;
 	reply.ReadLine(cin,kFALSE);
 
 	if( reply.BeginsWith("q") ) break;
-	
+	if( reply.BeginsWith("p") ){
+	  TString pdffilename;
+	  c1->Print( pdffilename.Format( "plots/c1_event_%d.pdf", nevent ), "pdf");
+	  c2->Print( pdffilename.Format( "plots/c2_event_%d.pdf", nevent ), "pdf");
+	  c_proj->Print( pdffilename.Format( "plots/cproj_event_%d.pdf", nevent ), "pdf");
+	}
       }
 	  
 	  
