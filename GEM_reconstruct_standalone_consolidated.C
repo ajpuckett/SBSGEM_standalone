@@ -59,6 +59,8 @@ const int MAXNTDC  = 100;
 
 const int TOTAL_REQUIRED_HIT = 3;
 
+long NSKIPPED;
+
 int TrackingAlgorithmFlag = 0; //0 = OLD, "brute force" algorithm, 1 = NEW, "grid container" algorithm"
 
 int nstripsx = 1280;
@@ -302,6 +304,57 @@ struct clusterdata_t { //1D and 2D clustering results by module:
   // vector<double> ixhit2D;
   // vector<double> iyhit2D;
   // vector<double> chi2match2D;
+  void Clear(){
+    itrack_clust2D.clear();
+    ixclust2D.clear();
+    iyclust2D.clear();
+    nstripx2D.clear();
+    nstripy2D.clear();
+    xclust2D.clear();
+    yclust2D.clear();
+    xclust2Dcorr.clear();
+    yclust2Dcorr.clear();
+    Eclust2D.clear();
+    tclust2D.clear();
+    tclust2Dwalkcorr.clear();
+    dEclust2D.clear();
+    dtclust2D.clear();
+    dtclust2Dwalkcorr.clear();
+    CorrCoeff2D.clear();
+    CorrCoeffMaxStrips.clear();
+    xglobal2D.clear();
+    yglobal2D.clear();
+    zglobal2D.clear();
+    xmom2D.clear();
+    ymom2D.clear();
+    keepclust2D.clear();
+
+    ADCsamp_xclust.clear();
+    ADCsamp_yclust.clear();
+
+    nstripx.clear();
+    ixstriplo.clear();
+    ixstriphi.clear();
+    ixstripmax.clear();
+    xmean.clear();
+    xsigma.clear();
+    totalchargex.clear();
+    txmean.clear();
+    txsigma.clear();
+    xstripADCsum.clear();
+
+    nstripy.clear();
+    iystriplo.clear();
+    iystriphi.clear();
+    iystripmax.clear();
+    ymean.clear();
+    ysigma.clear();
+    totalchargey.clear();
+    tymean.clear();
+    tysigma.clear();
+    ystripADCsum.clear();
+    
+  }
   
   
 };
@@ -588,12 +641,77 @@ void prune_clusters( clusterdata_t &clusttemp ){
   clusttemp.nkeep2D = ngood;
 }
 
+int find_clusters_by_module_newnewnew( moduledata_t mod_data, clusterdata_t &clust_data ){
+  clust_data.Clear();
+  
+  int module = mod_data.modindex;
+  int layer = mod_data.layerindex;
+  
+  int nlocalmaxX=0, nlocalmaxY=0;
+
+  clust_data.nclustx = 0;
+  clust_data.nclusty = 0;
+  clust_data.nclust2D = 0;
+  clust_data.modindex = module;
+  clust_data.layerindex = layer;
+  clust_data.nkeep2D = 0;
+
+  //another option for clustering is to collect all contiguous groups of strips, and then split clusters based into maxima based on prominence:
+  int ngroupsx=0;
+
+  vector<int> group_ixlo,group_ixhi;
+  vector<int> group_npeaksx;
+  vector<int> group_nstripx;
+  vector<vector<double> > group_xstripADC;
+  vector<vector<int> > group_ixpeak; //it will be assumed that this list is ordered by increasing strip
+  vector<vector<double> > group_xpeakADC; 
+
+  int currentgroup = 0;
+  
+  for( set<int>::iterator ix=mod_data.xstrips.begin(); ix != mod_data.xstrips.end(); ++ix ){
+    int strip = *ix;
+
+    //If the previous strip didn't fire, start a new group:
+    if( mod_data.xstrips.find(strip-1) == mod_data.xstrips.end() ){ 
+      group_ixlo.push_back( strip );
+      group_ixhi.push_back( strip );
+      
+      currentgroup = group_ixlo.size();
+      //group_nstripx.push_back( 1 );
+    }
+    //If the next strip didn't fire, end the current group and increment the number of groups:
+    if( mod_data.xstrips.find(strip+1) == mod_data.xstrips.end() ){
+      group_ixhi[currentgroup-1] = strip;
+      
+      //currentgroup++;
+    }
+  }
+
+  ngroupsx = group_ixlo.size();
+  for( int igroup=0; igroup<ngroupsx; igroup++ ){
+    group_nstripx.push_back( group_ixhi[igroup]-group_ixlo[igroup]+1 );
+    vector<double> stripADC;
+    //group_npeaksx.push_back( 0 );
+    for( int istrip = group_ixlo[igroup]; istrip <= group_ixhi[igroup]; istrip++ ){
+      stripADC.push_back( mod_data.ADCsum_xstrips_goodsamp[istrip] );
+    }
+    
+      
+  }
+  
+  
+
+  return 0;
+}
+  
 int find_clusters_by_module_newnew( moduledata_t mod_data, clusterdata_t &clust_data ){
   //In this approach, let us do 1D cluster-finding in X and Y, and then combine 1D clusters into 2D hit candidates:
   //This might affect some of the other routines that currently expect identical numbers of X and Y clusters:
 
   //
 
+  clust_data.Clear();
+  
   int module = mod_data.modindex;
   int layer = mod_data.layerindex;
   
@@ -609,12 +727,15 @@ int find_clusters_by_module_newnew( moduledata_t mod_data, clusterdata_t &clust_
   //create  temporary structures to hold local maxima:
   map<int,bool> islocalmax; //key = strip, value = true or false;
   set<int> localmaxima;     //list of strips that are local maxima
-  map<int,double> ADCmaxima; //key = strip, value = ADC sum of local max strip
-  vector<int> sortedmaxima;  //array of local max strips sorted by ADC amplitude: Do we really need this? I don't think so. 
+  //map<int,double> ADCmaxima; //key = strip, value = ADC sum of local max strip
+  //vector<int> sortedmaxima;  //array of local max strips sorted by ADC amplitude: Do we really need this? perhaps not:
   
   //Should we do one loop to flag all local maxima, then a second loop to check for multiple
   //local maxima in a contiguous grouping of strips within maxneighbors of each other?
 
+  
+  
+  
   for( set<int>::iterator ix=mod_data.xstrips.begin(); ix != mod_data.xstrips.end(); ++ix ){
     int strip = *ix;
 
@@ -634,43 +755,31 @@ int find_clusters_by_module_newnew( moduledata_t mod_data, clusterdata_t &clust_
     if( sumstrip >= sumleft && sumstrip >= sumright ){ //new local maximum: add it to the list:
       islocalmax[strip] = true;
       localmaxima.insert(strip);
-      ADCmaxima[strip] = sumstrip;
+      //ADCmaxima[strip] = sumstrip;
 
-      //unclear that the sorted list of maxima is necessary:
-      if( sortedmaxima.empty() ){
-	sortedmaxima.push_back( strip );
-      } else { //there is at least one other existing local maximum: figure out which position the new one belongs in:
-	vector<int>::iterator test = sortedmaxima.begin(); 
-
-	//We want to sort in DESCENDING order of ADC.
-	
-	// Iterate until we find the first existing strip with a SMALLER ADC sum than this one.
-	// As long as the ADC sum on THIS strip is smaller than the one at position test
-	// we increment the position
-	while( sumstrip < ADCmaxima[*test] && test != sortedmaxima.end() ) ++test;
-
-	//At this point we either found a strip with a smaller ADC than this one, or we reached the end of the list:
-	if( test != sortedmaxima.end() ){ //we did not reach the end of the list: insert this strip before the position of the
-	  //first strip with smaller ADC sum:
-	  sortedmaxima.insert( test, strip );
-	} else { //we reached the end of the list: use push_back
-	  sortedmaxima.push_back( strip );
-	}
-      }
+      
     }
   }
 
   //Better idea: calculate the "prominence" of each peak other than the highest one, and apply a threshold
   //on the prominence to keep the peak as a seed for an independent cluster:
 
-  //This is an incorrect calculation of prominence: we need to find the lowest point BETWEEN this maximum and the next higher point
-  for( int imax=0; imax<sortedmaxima.size(); imax++ ){ //these maxima 
-    int stripmax = sortedmaxima[imax]; 
-    double prominence = ADCmaxima[stripmax];
+  //let's avoid erasing things from maps and sets until we get through the entire sorted list
+  vector<int> peakstoerase;
+
+  // for( int imax=0; imax<sortedmaxima.size(); imax++ ){ //these maxima are sorted in descending order of ADC
+  //  int stripmax = sortedmaxima[imax]; 
+
+  for( set<int>::iterator ix=localmaxima.begin(); ix != localmaxima.end(); ++ix ){
+    int stripmax = *ix;
+
+    double ADCmax = mod_data.ADCsum_xstrips_goodsamp[stripmax];
+    
+    double prominence = ADCmax;
     
     int striplo=stripmax,striphi=stripmax;
 
-    double ADCminright = ADCmaxima[stripmax];
+    double ADCminright = ADCmax;
     bool higherpeakright=false;
     int peakright=-1;
     
@@ -680,13 +789,13 @@ int find_clusters_by_module_newnew( moduledata_t mod_data, clusterdata_t &clust_
 	ADCminright = mod_data.ADCsum_xstrips_goodsamp[striphi];
       }
 
-      if( islocalmax[striphi] && ADCmaxima[striphi] > ADCmaxima[stripmax] ){ //then this peak is in a contiguous group with another higher peak to the right:
+      if( islocalmax[striphi] && mod_data.ADCsum_xstrips_goodsamp[striphi] > ADCmax ){ //then this peak is in a contiguous group with another higher peak to the right:
 	higherpeakright=true;
 	peakright = striphi;
       }
     }
 
-    double ADCminleft = ADCmaxima[stripmax];
+    double ADCminleft = ADCmax;
     bool higherpeakleft = false;
     int peakleft=-1;
     
@@ -696,7 +805,7 @@ int find_clusters_by_module_newnew( moduledata_t mod_data, clusterdata_t &clust_
 	ADCminleft = mod_data.ADCsum_xstrips_goodsamp[striplo];
       }
 
-      if( islocalmax[striplo] && ADCmaxima[striplo] > ADCmaxima[stripmax] ){ //then this peak is in a contiguous groupd of strips with another higher peak to the left
+      if( islocalmax[striplo] && mod_data.ADCsum_xstrips_goodsamp[striplo] > ADCmax ){ //then this peak is in a contiguous groupd of strips with another higher peak to the left
 	higherpeakleft=true;
 	peakleft = striplo;
       }
@@ -710,15 +819,15 @@ int find_clusters_by_module_newnew( moduledata_t mod_data, clusterdata_t &clust_
 
     double sigma_sum = sqrt(double(nsamplesinsum))*sigma_sample; // about 50 ADC channels
 
-    cout << "sigma_sum = " << sigma_sum << endl;
+    //cout << "sigma_sum = " << sigma_sum << endl;
     
     if( !higherpeakleft ) ADCminleft = 0.0;
     if( !higherpeakright ) ADCminright = 0.0;
     
     if( higherpeakright || higherpeakleft ){ //contiguous with higher peaks on either the left or the right or both:
-      prominence = ADCmaxima[stripmax] - std::max( ADCminleft, ADCminright );
+      prominence = ADCmax - std::max( ADCminleft, ADCminright );
 
-      cout << "ADC max, peak prominence = " << ADCmaxima[stripmax] << ", " << prominence << endl;
+      //cout << "ADC max, peak prominence = " << ADCmaxima[stripmax] << ", " << prominence << endl;
       
       bool peak_close=false;
       if( higherpeakleft && abs( peakleft - stripmax ) <= 2*maxneighborsX ) peak_close = true;
@@ -727,14 +836,22 @@ int find_clusters_by_module_newnew( moduledata_t mod_data, clusterdata_t &clust_
       //peak_close = true;
       
       if( (prominence < thresh_2ndmax_nsigma * sigma_sum ||
-	   prominence/ADCmaxima[stripmax] < thresh_2ndmax_fraction) && peak_close ){
-	localmaxima.erase( stripmax );
-	islocalmax[stripmax] = false;
-	ADCmaxima.erase( stripmax );
+	   prominence/ADCmax < thresh_2ndmax_fraction) && peak_close ){
+	//	localmaxima.erase( stripmax );
+	//islocalmax[stripmax] = false;
+	//ADCmaxima.erase( stripmax );
+	peakstoerase.push_back( stripmax );
       }
-    } 
+    }
   }
-  
+  //I think this is safer...
+
+  for( int ipeak=0; ipeak<peakstoerase.size(); ipeak++ ){
+    localmaxima.erase( peakstoerase[ipeak] );
+    islocalmax[peakstoerase[ipeak]] = false;
+  }
+
+  //cout << "After erasing insignificant peaks, nmaxima = " << localmaxima.size() << endl;
   
   
   //how do we deal with overlap? One idea is to collect all strips within +/- maxneighbors of each local max,
@@ -762,6 +879,8 @@ int find_clusters_by_module_newnew( moduledata_t mod_data, clusterdata_t &clust_
     int striplo = stripmax;
     int striphi = stripmax;
 
+    double ADCmax = mod_data.ADCsum_xstrips_goodsamp[stripmax];
+    
     while( mod_data.xstrips.find( striplo-1 ) != mod_data.xstrips.end() &&
 	   stripmax-striplo < maxneighborsX ) striplo--;
     while( mod_data.xstrips.find( striphi+1 ) != mod_data.xstrips.end() &&
@@ -784,14 +903,15 @@ int find_clusters_by_module_newnew( moduledata_t mod_data, clusterdata_t &clust_
     
     for( int istrip=striplo; istrip<=striphi; istrip++ ){
       int nmax_strip = 1;
-      double sumweight = ADCmaxima[stripmax]/(1.0 + pow( (stripmax-istrip)*mod_ustrip_pitch[module]/sigma_hitshape, 2 ) );
+      double sumweight = ADCmax/(1.0 + pow( (stripmax-istrip)*mod_ustrip_pitch[module]/sigma_hitshape, 2 ) );
       //double sweight = ADCmaxima[stripmax]/(1.0 + pow( (stripmax-istrip)*mod_ustrip_pitch[module]/sigma_hitshape, 2 ) );
       double maxweight = sumweight;
 
-      //for every strip, search for any other local maxima within +/- maxneighbors and calculate the "weight" of any other local maxima in this strip
+      //for every strip, search for any other (contiguous) local maxima within +/- maxneighbors and calculate the "weight" of any other local maxima in this strip
       for( int jstrip=(istrip-maxneighborsX); jstrip<=(istrip+maxneighborsX); jstrip++ ){
 	if( localmaxima.find( jstrip ) != localmaxima.end() && jstrip != stripmax ){ //then this strip has "overlap" with another local max: check if every strip in between fired:	  
-	  sumweight += ADCmaxima[jstrip]/(1.0 + pow( (jstrip-istrip)*mod_ustrip_pitch[module]/sigma_hitshape, 2 ) );
+	  
+	  sumweight += mod_data.ADCsum_xstrips_goodsamp[jstrip]/(1.0 + pow( (jstrip-istrip)*mod_ustrip_pitch[module]/sigma_hitshape, 2 ) );
 	}
       }
 
@@ -848,14 +968,17 @@ int find_clusters_by_module_newnew( moduledata_t mod_data, clusterdata_t &clust_
     }
   }
 
+  //  cout << "finished X strips" << endl;
 
   //Now we need to repeat for Y: 
 
   //clear out containers for local maxima:
   islocalmax.clear();
   localmaxima.clear(); 
-  ADCmaxima.clear();
-  sortedmaxima.clear();
+  // ADCmaxima.clear();
+  // sortedmaxima.clear();
+
+  //  cout << "starting Y strips" << endl;
   
   for( set<int>::iterator iy=mod_data.ystrips.begin(); iy != mod_data.ystrips.end(); ++iy ){
     int strip = *iy;
@@ -876,42 +999,25 @@ int find_clusters_by_module_newnew( moduledata_t mod_data, clusterdata_t &clust_
     if( sumstrip >= sumleft && sumstrip >= sumright ){ //new local maximum: add it to the list:
       islocalmax[strip] = true;
       localmaxima.insert(strip);
-      ADCmaxima[strip] = sumstrip;
-
-      //unclear that the sorted list of maxima is necessary:
-      if( sortedmaxima.empty() ){
-	sortedmaxima.push_back( strip );
-      } else { //there is at least one other existing local maximum: figure out which position the new one belongs in:
-	vector<int>::iterator test = sortedmaxima.begin(); 
-
-	//We want to sort in DESCENDING order of ADC.
-	
-	// Iterate until we find the first existing strip with a SMALLER ADC sum than this one.
-	// As long as the ADC sum on THIS strip is smaller than the one at position test
-	// we increment the position
-	while( sumstrip < ADCmaxima[*test] && test != sortedmaxima.end() ) ++test;
-
-	//At this point we either found a strip with a smaller ADC than this one, or we reached the end of the list:
-	if( test != sortedmaxima.end() ){ //we did not reach the end of the list: insert this strip before the position of the
-	  //first strip with smaller ADC sum:
-	  sortedmaxima.insert( test, strip );
-	} else { //we reached the end of the list: use push_back
-	  sortedmaxima.push_back( strip );
-	}
-      }
+      
     }
   }
 
   //Better idea: calculate the "prominence" of each peak other than the highest one, and apply a threshold
   //on the prominence to keep the peak as a seed for an independent cluster:
 
-  for( int imax=0; imax<sortedmaxima.size(); imax++ ){ //these maxima 
-    int stripmax = sortedmaxima[imax]; 
-    double prominence = ADCmaxima[stripmax];
+  peakstoerase.clear();
+  
+  //for( int imax=0; imax<sortedmaxima.size(); imax++ ){ //these maxima 
+  for( set<int>::iterator iy = localmaxima.begin(); iy != localmaxima.end(); ++iy ){
+    int stripmax = *iy;
+
+    double ADCmax = mod_data.ADCsum_ystrips_goodsamp[stripmax];
+    double prominence = ADCmax;
     
     int striplo=stripmax,striphi=stripmax;
 
-    double ADCminright = ADCmaxima[stripmax];
+    double ADCminright = ADCmax;
     bool higherpeakright=false;
     int peakright = -1; 
     while( mod_data.ystrips.find(striphi+1) != mod_data.ystrips.end() ){
@@ -920,13 +1026,13 @@ int find_clusters_by_module_newnew( moduledata_t mod_data, clusterdata_t &clust_
 	ADCminright = mod_data.ADCsum_ystrips_goodsamp[striphi];
       }
 
-      if( islocalmax[striphi] && ADCmaxima[striphi] > ADCmaxima[stripmax] ){ //then this peak is in a contiguous group with another higher peak to the right:
+      if( islocalmax[striphi] && mod_data.ADCsum_ystrips_goodsamp[striphi] > ADCmax ){ //then this peak is in a contiguous group with another higher peak to the right:
 	higherpeakright=true;
 	peakright = striphi;
       }
     }
 
-    double ADCminleft = ADCmaxima[stripmax];
+    double ADCminleft = ADCmax;
     bool higherpeakleft = false;
     int peakleft = -1;
     while( mod_data.ystrips.find(striplo-1) != mod_data.ystrips.end() ){
@@ -935,7 +1041,7 @@ int find_clusters_by_module_newnew( moduledata_t mod_data, clusterdata_t &clust_
 	ADCminleft = mod_data.ADCsum_ystrips_goodsamp[striplo];
       }
 
-      if( islocalmax[striplo] && ADCmaxima[striplo] > ADCmaxima[stripmax] ){ //then this peak is in a contiguous groupd of strips with another higher peak to the left
+      if( islocalmax[striplo] && mod_data.ADCsum_ystrips_goodsamp[striplo] > ADCmax ){ //then this peak is in a contiguous groupd of strips with another higher peak to the left
 	higherpeakleft=true;
 	peakleft = striplo;
       }
@@ -953,26 +1059,36 @@ int find_clusters_by_module_newnew( moduledata_t mod_data, clusterdata_t &clust_
     if( !higherpeakright ) ADCminright = 0.0;
     
     if( higherpeakright || higherpeakleft ){ //contiguous with higher peaks on either the left or the right or both:
-      prominence = ADCmaxima[stripmax] - std::max( ADCminleft, ADCminright );
+      prominence = ADCmax - std::max( ADCminleft, ADCminright );
 
       bool peak_close=false;
       if( higherpeakleft && abs( peakleft - stripmax ) <= 2*maxneighborsY ) peak_close = true;
       if( higherpeakright && abs( peakright - stripmax ) <= 2*maxneighborsY ) peak_close = true;
       
       if( (prominence < thresh_2ndmax_nsigma * sigma_sum ||
-	   prominence/ADCmaxima[stripmax] < thresh_2ndmax_fraction) && peak_close ){
-	localmaxima.erase( stripmax );
-	islocalmax[stripmax] = false;
-	ADCmaxima.erase( stripmax );
+	   prominence/ADCmax < thresh_2ndmax_fraction) && peak_close ){
+	// localmaxima.erase( stripmax );
+	// islocalmax[stripmax] = false;
+	// ADCmaxima.erase( stripmax );
+
+	peakstoerase.push_back( stripmax );
       }
     } 
   }
+
+   for( int ipeak=0; ipeak<peakstoerase.size(); ipeak++ ){
+    localmaxima.erase( peakstoerase[ipeak] );
+    islocalmax[peakstoerase[ipeak]] = false;
+  }
+  
   
   for( set<int>::iterator iy = localmaxima.begin(); iy != localmaxima.end(); ++iy ){
     int stripmax = *iy;
     int striplo = stripmax;
     int striphi = stripmax;
 
+    double ADCmax = mod_data.ADCsum_ystrips_goodsamp[stripmax];
+    
     while( mod_data.ystrips.find( striplo-1 ) != mod_data.ystrips.end() &&
 	   stripmax-striplo < maxneighborsY ) striplo--;
     while( mod_data.ystrips.find( striphi+1 ) != mod_data.ystrips.end() &&
@@ -995,14 +1111,14 @@ int find_clusters_by_module_newnew( moduledata_t mod_data, clusterdata_t &clust_
     
     for( int istrip=striplo; istrip<=striphi; istrip++ ){
       int nmax_strip = 1;
-      double sumweight = ADCmaxima[stripmax]/(1.0 + pow( (stripmax-istrip)*mod_vstrip_pitch[module]/sigma_hitshape, 2 ) );
+      double sumweight = ADCmax/(1.0 + pow( (stripmax-istrip)*mod_vstrip_pitch[module]/sigma_hitshape, 2 ) );
       //double sweight = ADCmaxima[stripmax]/(1.0 + pow( (stripmax-istrip)*mod_ustrip_pitch[module]/sigma_hitshape, 2 ) );
       double maxweight = sumweight;
 
       //for every strip, search for any other local maxima within +/- maxneighbors and calculate the "weight" of any other local maxima in this strip
       for( int jstrip=istrip-maxneighborsY; jstrip<=istrip+maxneighborsY; jstrip++ ){
 	if( localmaxima.find( jstrip ) != localmaxima.end() && jstrip != stripmax ){ //then this strip has "overlap" with another local max
-	  sumweight += ADCmaxima[jstrip]/(1.0 + pow( (jstrip-istrip)*mod_vstrip_pitch[module]/sigma_hitshape, 2 ) );
+	  sumweight += mod_data.ADCsum_ystrips_goodsamp[jstrip]/(1.0 + pow( (jstrip-istrip)*mod_vstrip_pitch[module]/sigma_hitshape, 2 ) );
 	}
       }
 
@@ -2601,7 +2717,7 @@ void new_find_tracks(map<int,clusterdata_t> mod_clusters, trackdata_t &trackdata
     }
 }
 
-void find_tracks( map<int,clusterdata_t> mod_clusters, trackdata_t &trackdata ){
+void find_tracks_old( map<int,clusterdata_t> mod_clusters, trackdata_t &trackdata ){
   //only attempt tracking if we have at least three layers with at least one 2D matched hit passing the XY and T correlation cuts:
 
   //  int nhitsrequired = nlayers;
@@ -2699,7 +2815,11 @@ void find_tracks( map<int,clusterdata_t> mod_clusters, trackdata_t &trackdata ){
 	//nhitsrequired = layerswithfreehits.size();
 
 	if( ncombosremaining > maxnhitcombinations || ncombosremaining < 0 ){
-	  cout << "too many hit combos, skipping tracking for this event..." << endl;
+	  if( trackdata.ntracks == 0 && nhitsrequired == layers_2Dmatch.size() ){
+
+	    //cout << "too many hit combos, skipping tracking for this event..." << endl;
+	    NSKIPPED++;
+	  }
 	  return;
 	}
 
@@ -3020,7 +3140,7 @@ void find_tracks( map<int,clusterdata_t> mod_clusters, trackdata_t &trackdata ){
 		
 		ngoodcombos++;
 		
-	      } //if (nhits > nhitsrequired)
+	      } //if (nhits >= nhitsrequired)
 	    } //while (nextcomboexists): end loop over all possible hit combos for current value of nhitsrequired:
 	  } //end loop over all possible combinations of nhitsrequired layers:  
 	  if( ngoodcombos > 0 && bestchi2 < TrackChi2Cut ){ //add track to global track arrays and mark hits as used:
@@ -3132,6 +3252,526 @@ void find_tracks( map<int,clusterdata_t> mod_clusters, trackdata_t &trackdata ){
   }
 }
 
+void find_tracks( map<int,clusterdata_t> mod_clusters, trackdata_t &trackdata ){
+  //only attempt tracking if we have at least three layers with at least one 2D matched hit passing the XY and T correlation cuts:
+
+  //  int nhitsrequired = nlayers;
+  
+  set<int> layers_2Dmatch;
+  map<int,int> N2Dhits_layer; //number of 2D matched hits per layer
+  map<int,vector<int> > modindexhit2D; //module index of hits mapped by layer
+  map<int,vector<int> > clustindexhit2D; //index position of hits within 2D cluster array
+  map<int,vector<bool> > hitused2D; //flag to indicate hit is used in a track:
+
+  //Here we are populating the hit arrays, mapped by layer, that won't change throughout the track-finding iterations:
+  for( map<int,clusterdata_t>::iterator imod=mod_clusters.begin(); imod != mod_clusters.end(); ++imod ){
+    int module = imod->first;
+    //clusterdata_t clusttemp = mod_clusters[module];
+    int layer = mod_layer[module];
+
+    //prune_clusters( mod_clusters[module] ); this was moved to find_clusters
+    
+    if( mod_clusters[module].nclust2D > 0 ){
+      for( int iclust=0; iclust<mod_clusters[module].nclust2D; iclust++ ){
+	// double ADCasym = mod_clusters[module].dEclust2D[iclust]/(2.*mod_clusters[module].Eclust2D[iclust]);
+	// double Tdiff   = mod_clusters[module].dtclust2D[iclust];
+
+	// double corrcoeff = mod_clusters[module].CorrCoeff2D[iclust];
+
+	
+	// if( fabs( ADCasym ) < cluster2Dmatch_asymcut && fabs( Tdiff ) < cluster2Dmatch_tcut &&
+	//     fabs(mod_clusters[module].dEclust2D[iclust])<1000.0 && mod_clusters[module].nstripx2D[iclust]<=5 &&
+	//     mod_clusters[module].nstripy2D[iclust]<=5 ){ // GOOD match:
+	// if( fabs( ADCasym ) < cluster2Dmatch_asymcut && fabs( Tdiff ) < cluster2Dmatch_tcut &&
+	//     corrcoeff > clustcorthreshold && mod_clusters[module].Eclust2D[iclust] > thresh_clustersum ){
+
+	if( mod_clusters[module].keepclust2D[iclust] ){
+	
+	  layers_2Dmatch.insert( layer );
+	  modindexhit2D[layer].push_back( module );
+	  clustindexhit2D[layer].push_back( iclust );
+	  hitused2D[layer].push_back( false );
+	  
+	  N2Dhits_layer[layer] = modindexhit2D[layer].size();
+	}  
+	
+      }
+    }
+  }
+
+  if( layers_2Dmatch.size() >= TOTAL_REQUIRED_HIT ){
+    //trackdata_t trackdatatemp;
+
+    trackdata.ntracks = 0;
+    
+    bool foundtrack=true;
+    while( foundtrack ){
+
+      //as long as we found a track on previous track-finding iteration, look for more tracks:
+      foundtrack = false;
+
+      int nhitsrequired=layers_2Dmatch.size(); //initially, we require nhits = total number of layers with unused hits:
+
+      //If we don't find a good track at nhitsrequired hits, we can decrement the required number of hits as long as it is greater than the minimum
+      // of TOTAL_REQUIRED_HIT:
+      while( nhitsrequired >= TOTAL_REQUIRED_HIT ){ //first iteration: determine number of layers with (unused) hits, populate lists of unused hits, count number of combinations,
+	//etc:
+	
+	foundtrack = false;
+
+	//here we populate the lists of free hits by layer: if we found a track on the previous iteration, some hits will have been marked as used
+	//if we didn't find a track, then no hits will have been marked as used, but the number of hits required to
+	//make a track will have been decremented:
+	long ncombosremaining=1;
+
+	map<int,int> Nfreehits_layer; //free hit count mapped by layer
+	set<int> layerswithfreehits;  //list of layers with free hits
+	map<int,vector<int> > freehitlist_layer; //list of free hits mapped by layer: index in the unchanging arrays defined above:
+	map<int,int> freehitcounter; //counter for looping over combos:
+
+	//Populate the "free hit list" information:
+	for(set<int>::iterator ilay=layers_2Dmatch.begin(); ilay!=layers_2Dmatch.end(); ++ilay ){
+	  int layer = *ilay;
+	  Nfreehits_layer[layer] = 0;
+	  
+	  for( int ihit=0; ihit<N2Dhits_layer[layer]; ihit++ ){
+	    if( !hitused2D[layer][ihit] ) {
+	      Nfreehits_layer[layer]++;
+	      freehitlist_layer[layer].push_back( ihit );
+	    }
+	  }
+ 
+	  if( Nfreehits_layer[layer] > 0 ){
+	    ncombosremaining *= Nfreehits_layer[layer];
+	    layerswithfreehits.insert(layer);
+	    freehitcounter[layer] = 0;
+	    // minlayer = (layer < minlayer ) ? layer : minlayer;
+	    // maxlayer = (layer > maxlayer ) ? layer : maxlayer;
+	  }
+	}
+
+	//this will get us stuck in an infinite loop if we don't find a track: comment out
+	//nhitsrequired = layerswithfreehits.size();
+
+	if( ncombosremaining > maxnhitcombinations || ncombosremaining < 0 ){
+	  //cout << "too many hit combos, skipping tracking for this event..." << endl;
+
+	  if( trackdata.ntracks == 0 && nhitsrequired == layers_2Dmatch.size() ) NSKIPPED++;
+	  
+	  return;
+	}
+
+	//	cout << "Starting tracking, ncombosremaining = " << ncombosremaining << endl;
+	
+	if( layerswithfreehits.size() >= nhitsrequired ){ //If the number of layers with free hits exceeds the number of hits required to make a track, proceed:
+	  
+
+	  //number of layers to in total:
+	  int nlayerstot = layerswithfreehits.size();
+
+	  map<int,int> hitcombo; //hits mapped by layer:
+	  map<int,bool> ontrack; //flag to indicate whether this layer actually ended up on the track; to handle cases when the number of layers with free hits exceeds the number of layers that end up on the track
+	  map<int,double> xresid_layer; //"U" residual (generalized "X") for test combos, mapped by layer
+	  map<int,double> yresid_layer; //"V" residual (generalized "Y") for test combos, mapped by layer
+	  //bool first = true; //flag to indicate first hit combo to be considered
+
+	  map<int,int> besthitcombo; //map to store "BEST" combo according to Track chi2, mapped by layer
+	  map<int,bool> onbesttrack; //flag to indicate whether this layer actually ended up on the track; to handle cases when the number of layers with free hits exceeds the number of layers that end up on the track; i.e., when nhitsrequired < n layers with free hits
+	  map<int,double> bestxresid; //"U" residual (generalized "X") for best hit combo, mapped by LAYER
+	  map<int,double> bestyresid; //"V" residual (generalized "Y") for best hit combo, mapped by LAYER
+	  
+	  //	  map<int,double> xhit,yhit,zhit,xresid,yresid; no longer used
+
+	  double BestTrack[4]; //X,Xp,Y,Yp of best track
+
+	  double bestchi2; //chi2/NDF of best track
+	  
+	  //cout << "looping over hit combinations, ncombos = " << ncombosremaining << endl;
+	  // while( nextcomboexists ){
+	    // nextcomboexists=false;
+
+	  int nhits = 0; //number of hits on candidate track
+	  int nhitbestcombo = 0;
+	  
+	  int ngoodcombos=0; //number of plausible track candidates found:
+
+	  //onbesttrack.clear();
+	  
+	  for( int icombo=0; icombo<layercombos[nhitsrequired].size(); icombo++ ){ //loop over all possible combinations of nhitsrequired LAYERS with available hits:
+
+	    //nextcomboexists = true;
+	    
+	    set<int> layerstotest; //populate the list of layers to be tested:
+
+	    int minlayer = nlayers+1;
+	    int maxlayer = -1;
+
+	    //to speed the tracking, find the two layers with the lowest and second-lowest free hit counts: 
+	    //but before we do that, let's relax the tracking cut: 
+	    //This can help 
+	    
+	    int testlayer1=minlayer,testlayer2=maxlayer;
+	    
+	    for( int ihit=0; ihit<nhitsrequired; ihit++ ){
+
+	      int layeri = layercombos[nhitsrequired][icombo][ihit];
+
+	      if( layerswithfreehits.find(layeri) != layerswithfreehits.end() ){
+	      
+		layerstotest.insert( layeri );
+	      //at the beginning of each layer combination, reset the free hit counter to zero for each layer being tested:
+		//freehitcounter[layeri] = 0; we don't actually need this for new algorithm:
+		//figure out lowest and highest layers in this combo:
+		minlayer = (layeri < minlayer ) ? layeri : minlayer;
+		maxlayer = (layeri > maxlayer ) ? layeri : maxlayer;
+
+	      }
+	    }
+
+	    if( layerstotest.size() < nhitsrequired ) { //skip this combination of layers if there aren't enough fired layers to make a track
+	      break;
+	    }	 
+
+	    long ncombos_minmax = Nfreehits_layer[minlayer]*Nfreehits_layer[maxlayer];
+
+	    // if( ncombos_minmax > maxnhitcombinations || ncombos_minmax < 0 ) {
+	    //   cout << "warning, skipping layer combination due to too many hit combinations, icombo, minlayer, maxlayer, nhitsrequired, ncombos, ntracks = "
+	    // 	   << icombo << ", " << minlayer << ", " << maxlayer << ", " << nhitsrequired << ", " << ncombos_minmax << ", " << trackdata.ntracks << endl ;
+	    //   continue;
+	    // }
+	    
+	    double sumxhits=0.0,sumyhits=0.0,sumzhits=0.0,sumxzhits=0.0,sumyzhits=0.0,sumz2hits=0.0;
+	    
+	    double xtrtemp,ytrtemp,ztrtemp,xptrtemp,yptrtemp; //temporary storage for track parameters: 
+	    
+	    double varx,vary,varxp,varyp,covxxp,covyyp;
+	    
+	     
+	    //Now loop over all combinations of one unused hit from minlayer and one unused hit from maxlayer:
+	    for( int ihit=0; ihit<freehitlist_layer[minlayer].size(); ihit++ ){
+	      for( int jhit=0; jhit<freehitlist_layer[maxlayer].size(); jhit++ ){
+
+		//clear certain arrays before populating each combo:
+		ontrack.clear();
+		hitcombo.clear();
+		xresid_layer.clear();
+		yresid_layer.clear(); //at the beginning of each combination from inner most and outermost layers
+		
+		int hitmin=freehitlist_layer[minlayer][ihit];
+		int hitmax=freehitlist_layer[maxlayer][jhit];
+
+		//Next step is to calculate the straight line in 3D space connecting these two hits; then search for the hit in each intermediate layer closest to
+		//the straight-line projection of the min and max layers:
+		int modmin = modindexhit2D[minlayer][hitmin];
+		int modmax = modindexhit2D[maxlayer][hitmax];
+		int iclustmin = clustindexhit2D[minlayer][hitmin];
+		int iclustmax = clustindexhit2D[maxlayer][hitmax];
+
+		double xmin = mod_clusters[modmin].xglobal2D[iclustmin];		
+		double ymin = mod_clusters[modmin].yglobal2D[iclustmin];		
+		double zmin = mod_clusters[modmin].zglobal2D[iclustmin];
+		
+		double ymax = mod_clusters[modmax].yglobal2D[iclustmax];
+		double xmax = mod_clusters[modmax].xglobal2D[iclustmax];
+		double zmax = mod_clusters[modmax].zglobal2D[iclustmax];
+
+		xptrtemp = (xmax-xmin)/(zmax-zmin);
+		yptrtemp = (ymax-ymin)/(zmax-zmin);
+		xtrtemp = 0.5*( xmin - zmin * xptrtemp + xmax - zmax * xptrtemp );
+		ytrtemp = 0.5*( ymin - zmin * yptrtemp + ymax - zmax * yptrtemp );
+
+		sumxhits = xmin + xmax;
+		sumyhits = ymin + ymax;
+		sumzhits = zmin + zmax;
+		sumxzhits = xmin*zmin + xmax*zmax;
+		sumyzhits = ymin*zmin + ymax*zmax;
+		sumz2hits = pow(zmin,2)+pow(zmax,2);
+		  
+		nhits = 2;
+
+		ontrack[minlayer] = true;
+		ontrack[maxlayer] = true;
+
+		hitcombo[minlayer] = hitmin;
+		hitcombo[maxlayer] = hitmax;
+		  
+		//Now loop over all intermediate layers and find the hit with the minimum residual to the CURRENT linear fit in each layer;
+		//But always keep at least 1:
+		for( int layer=minlayer+1; layer<maxlayer; layer++ ){
+		  if( layerstotest.find(layer)!=layerstotest.end() ){ //if this layer is in the list of layers we are currently considering:
+		    int khit_minresid=-1;
+		    double minresid2 = 0.0;
+
+		    ontrack[layer] = false; //initialize ontrack for this layer to false in order to avoid undefined behavior
+		    
+		    int modbest, hitbest=-1;
+		    double xbest,ybest,zbest;
+		    
+		    for( int khit=0; khit<freehitlist_layer[layer].size(); khit++ ){
+		      int hitk = freehitlist_layer[layer][khit];
+		      int modk = modindexhit2D[layer][hitk];
+		      int clustk = clustindexhit2D[layer][hitk];
+
+		      double xhitk = mod_clusters[modk].xglobal2D[clustk];
+		      double yhitk = mod_clusters[modk].yglobal2D[clustk];
+		      double zhitk = mod_clusters[modk].zglobal2D[clustk];
+
+		      double uhitk = mod_clusters[modk].xclust2Dcorr[clustk];
+		      double vhitk = mod_clusters[modk].yclust2Dcorr[clustk];
+
+		      double trackxproj = xtrtemp + xptrtemp * zhitk;
+		      double trackyproj = ytrtemp + yptrtemp * zhitk;
+		      TVector3 trackpos_global( trackxproj, trackyproj, zhitk );
+		      TVector3 modcenter_global( mod_x0[modk], mod_y0[modk], mod_z0[modk] );
+
+		      TVector3 trackpos_local = mod_Rotinv[modk] * (trackpos_global - modcenter_global);
+
+		      double utrack_k = trackpos_local.X()*mod_Pxu[modk] + trackpos_local.Y()*mod_Pyu[modk];
+		      double vtrack_k = trackpos_local.X()*mod_Pxv[modk] + trackpos_local.Y()*mod_Pyv[modk];
+			
+		      double resid2hit = pow( uhitk - utrack_k, 2 ) + pow( vhitk - vtrack_k, 2 ); //
+
+		      if( khit_minresid < 0 || resid2hit < minresid2 ){ //either this is the first hit we are considering in this layer or at has the smallest
+			//squared residual with the current track:
+			khit_minresid = hitk; //use index in the free hit list for convenience. We may want to revisit this choice
+			minresid2 = resid2hit;
+
+			modbest = modk;
+			hitbest = hitk;
+			xbest = xhitk;
+			ybest = yhitk;
+			zbest = zhitk;
+			
+		      }
+		    }
+
+		    //if the closest hit in this layer to the current straight-line projection of the track is on a good track
+		    double ndf_temp = double(2*(nhits+1)-4);
+		    //chi2 contribution of this hit wrt the straight-line fit to all previous hits is resid2/sigma^2
+		    // chi2/ndf < TrackChi2Cut 
+		    if( hitbest >= 0 && minresid2 / pow(sigma_hitpos,2) <= 2.0*TrackChi2Cut ){
+		      //this might be a good track: add this hit to the combo and update the linear fit:
+		      ontrack[layer] = true;
+		      hitcombo[layer] = hitbest;
+
+		      //update sums:
+		      sumxhits += xbest;
+		      sumyhits += ybest;
+		      sumzhits += zbest;
+		      sumxzhits += xbest*zbest;
+		      sumyzhits += ybest*zbest;
+		      sumz2hits += pow(zbest,2);
+
+		      nhits++;
+
+		      //let's see what happens if we DON'T do this 
+		      //update best track based on fit to all hits in current combo:
+		      double denom = (sumz2hits*nhits - pow(sumzhits,2));
+		      xptrtemp = (nhits*sumxzhits - sumxhits*sumzhits)/denom;
+		      yptrtemp = (nhits*sumyzhits - sumyhits*sumzhits)/denom;
+		      xtrtemp = (sumz2hits*sumxhits - sumzhits*sumxzhits)/denom;
+		      ytrtemp = (sumz2hits*sumyhits - sumzhits*sumyzhits)/denom;
+			
+		    } //check that the hit with smallest residual to the current track within this layer (a) exists and (b) has residual less than max residual
+		      
+		  } //test if current intermediate layer is in the list of layers to test
+		} //end loop over intermediate layers
+		  
+
+		
+		//
+		if( nhits >= nhitsrequired ){ //calculate chi2, and update best hit combo as applicable:
+
+		  //let's see what happens if we DON'T do this 
+		  //update best track based on fit to all hits in current combo:
+		  double denom = (sumz2hits*nhits - pow(sumzhits,2));
+		  xptrtemp = (nhits*sumxzhits - sumxhits*sumzhits)/denom;
+		  yptrtemp = (nhits*sumyzhits - sumyhits*sumzhits)/denom;
+		  xtrtemp = (sumz2hits*sumxhits - sumzhits*sumxzhits)/denom;
+		  ytrtemp = (sumz2hits*sumyhits - sumzhits*sumyzhits)/denom;
+
+		  double chi2 = 0.0;
+		  
+		  //now, we need to modify the chi2 calculation to account for possible different strip orientations:
+		  //Should we look at U and V residuals instead of "X" and "Y" residuals? YES:
+		  
+		  int ndf = 2*nhits-4;
+		  
+		  //		for(set<int>::iterator ilayer=layerswithfreehits.begin(); ilayer!=layerswithfreehits.end(); ++ilayer){
+		  for( set<int>::iterator ilayer = layerstotest.begin(); ilayer != layerstotest.end(); ++ilayer ){
+		    int layer = *ilayer;
+		    
+		    if( ontrack[layer] ){
+		      int ihit=hitcombo[layer];
+		      
+		      int module = modindexhit2D[layer][ihit];
+		      int iclust= clustindexhit2D[layer][ihit];
+		      
+		      //global hit coordinates now stored during cluster finding, no need to recompute:
+		      double xhittemp = mod_clusters[module].xglobal2D[iclust];
+		      double yhittemp = mod_clusters[module].yglobal2D[iclust];
+		      double zhittemp = mod_clusters[module].zglobal2D[iclust]; 
+		      
+		      //These are the local coordinates of the hit, measured in "Strip" coordinates:
+		      double uhittemp = mod_clusters[module].xclust2Dcorr[iclust];
+		      double vhittemp = mod_clusters[module].yclust2Dcorr[iclust];
+		      
+		      //double utracktemp = (xtrtemp+xptrtemp*zhittemp)*mod_Pxu[module] + (ytrtemp+yptrtemp*zhittemp)*mod_Pyu[module];
+		      //double vtracktemp = (xtrtemp+xptrtemp*zhittemp)*mod_Pxv[module] + (ytrtemp+yptrtemp*zhittemp)*mod_Pyv[module];
+		      
+		      TVector3 trackpos_global( xtrtemp+xptrtemp*zhittemp, ytrtemp+yptrtemp*zhittemp, zhittemp );
+		      TVector3 modcenter_global( mod_x0[module], mod_y0[module], mod_z0[module] );
+		      
+		      
+		      TVector3 trackpos_local = mod_Rotinv[module]*(trackpos_global - modcenter_global);
+		      
+		      //Compute the local "u" and "v" coordinates of the track within the module, to allow for the
+		      //possibility of different strip orientations than X/Y:
+		      double utracktemp = trackpos_local.X()*mod_Pxu[module] + trackpos_local.Y()*mod_Pyu[module];
+		      double vtracktemp = trackpos_local.X()*mod_Pxv[module] + trackpos_local.Y()*mod_Pyv[module];
+		      
+		      // chi2 += pow( (xhittemp - (xtrtemp + xptrtemp*zhittemp))/sigma_hitpos, 2 ) +
+		      //   pow( (yhittemp - (ytrtemp + yptrtemp*zhittemp))/sigma_hitpos, 2 );
+		      
+		      chi2 += pow( (uhittemp-utracktemp)/sigma_hitpos, 2 ) + pow( (vhittemp - vtracktemp)/sigma_hitpos, 2 );
+		      
+		      xresid_layer[layer] = uhittemp - utracktemp;
+		      yresid_layer[layer] = vhittemp - vtracktemp;
+		      
+		    }
+		  }
+		
+		  if( ngoodcombos == 0 || chi2/double(ndf) < bestchi2 ){
+		    bestchi2 = chi2/double(ndf);
+		    besthitcombo = hitcombo;
+		    onbesttrack = ontrack;
+		    BestTrack[0] = xtrtemp;
+		    BestTrack[1] = xptrtemp;
+		    BestTrack[2] = ytrtemp;
+		    BestTrack[3] = yptrtemp;
+
+		    bestxresid = xresid_layer;
+		    bestyresid = yresid_layer;
+		  
+		    nhitbestcombo = nhits;
+
+		    ngoodcombos++;
+		  }
+		} //check number of hits on track candidate at least nhitsrequired
+	      } //end loop over free hits in max layer (topmost layer)
+	    } //end loop over free hits in min layer (bottom-most layer)
+	  } //end loop over all possible combinations of nhitsrequired layers
+
+
+	  if( ngoodcombos > 0 && bestchi2 < TrackChi2Cut ){ //add track to global track arrays and mark hits as used:
+	    foundtrack = true;
+	    trackdata.nhitsontrack.push_back( nhitbestcombo );
+	    
+	    vector<int> modlisttemp,hitlisttemp;
+	    vector<double> residxtemp,residytemp;
+	    
+	    for( map<int,int>::iterator ihit=besthitcombo.begin(); ihit != besthitcombo.end(); ++ihit ){
+	      int layer = ihit->first;
+	      
+	      if( onbesttrack[layer] ){
+		int hit = besthitcombo[layer];
+		int module = modindexhit2D[layer][hit];
+		int iclust = clustindexhit2D[layer][hit];
+		
+		hitused2D[layer][hit] = true;
+		
+		// double xhittemp = mod_clusters[module].xglobal2D[iclust];
+		// double yhittemp = mod_clusters[module].yglobal2D[iclust];
+		// double zhittemp = mod_clusters[module].zglobal2D[iclust]; 
+
+		// double uhittemp = mod_clusters[module].xclust2D[iclust];
+		// double vhittemp = mod_clusters[module].yclust2D[iclust];
+
+		
+		// TVector3 trackpos_global (BestTrack[0] + BestTrack[1]*zhittemp, BestTrack[2] + BestTrack[3]*zhittemp, zhittemp );
+		// TVector3 modcenter_global( mod_x0[module], mod_y0[module], mod_z0[module] );
+		
+		
+		// TRotation Rmod;
+		// Rmod.RotateX( mod_ax[module] );
+		// Rmod.RotateY( mod_ay[module] );
+		// Rmod.RotateZ( mod_az[module] );
+		
+		// TVector3 trackpos_local = Rmod.Inverse()*(trackpos_global - modcenter_global);
+		
+		// double utracktemp = trackpos_local.X()*mod_Pxu[module] + trackpos_local.Y()*mod_Pyu[module];
+		// double vtracktemp = trackpos_local.X()*mod_Pxv[module] + trackpos_local.Y()*mod_Pyv[module];
+		
+		//double utracktemp = (BestTrack[0] + BestTrack[1]*zhittemp)*mod_Pxu[module] + (BestTrack[2] + BestTrack[3])*mod_Pyu[module];
+		//double vtracktemp = (BestTrack[0] + BestTrack[1]*zhittemp)*mod_Pxv[module] + (BestTrack[2] + BestTrack[3])*mod_Pyv[module];
+		
+		modlisttemp.push_back( module );
+		hitlisttemp.push_back( iclust );
+		// residxtemp.push_back( xhittemp - (BestTrack[0] + BestTrack[1]*zhittemp) );
+		// residytemp.push_back( yhittemp - (BestTrack[2] + BestTrack[3]*zhittemp) );
+		residxtemp.push_back( bestxresid[layer] );
+		residytemp.push_back( bestyresid[layer] );
+		
+		mod_clusters[module].itrack_clust2D[iclust] = trackdata.ntracks;
+	      }
+	    }
+	    
+	    trackdata.modlist_track.push_back( modlisttemp );
+	    trackdata.hitlist_track.push_back( hitlisttemp );
+	    trackdata.residx_hits.push_back( residxtemp );
+	    trackdata.residy_hits.push_back( residytemp );
+	    trackdata.eresidx_hits.push_back( residxtemp );
+	    trackdata.eresidy_hits.push_back( residytemp );
+	    
+	    trackdata.Xtrack.push_back( BestTrack[0] );
+	    trackdata.Xptrack.push_back( BestTrack[1] );
+	    trackdata.Ytrack.push_back( BestTrack[2] );
+	    trackdata.Yptrack.push_back( BestTrack[3] );
+	    
+	    trackdata.Chi2NDFtrack.push_back( bestchi2 );
+
+	    //Experimental: eliminate all other hits containing either the same X maximum or same Y maximum as a hit already used in a track.
+	    for( int ihittemp=0; ihittemp<hitlisttemp.size(); ihittemp++ ){
+	      int modtemp = modlisttemp[ihittemp];
+	      int iclusttemp = hitlisttemp[ihittemp]; //position in 2D cluster array:
+	      int ixtemp = mod_clusters[modtemp].ixclust2D[iclusttemp];
+	      int iytemp = mod_clusters[modtemp].iyclust2D[iclusttemp];
+	      int layertemp = mod_layer[modtemp];
+
+	      for( int jhittemp=0; jhittemp<N2Dhits_layer[layertemp]; jhittemp++ ){
+	    	int modj = modindexhit2D[layertemp][jhittemp];
+	    	int clustj = clustindexhit2D[layertemp][jhittemp];
+	    	if( modj == modtemp ){
+	    	  int ixj = mod_clusters[modj].ixclust2D[clustj];
+	    	  int iyj = mod_clusters[modj].iyclust2D[clustj];
+	    	  if( ixj == ixtemp || iyj == iytemp ){
+	    	    hitused2D[layertemp][jhittemp] = true;
+	    	  }
+	    	}
+	      }
+	      
+	    }
+	    
+	    trackdata.ntracks++;
+	  } //end check on number of good combinations > 0 and track with smallest chi^2 passes cut
+	  
+	} //end check on "layers with free hits >= nhits required"
+	  //if( !foundtrack ) break; //prevents getting stuck in infinite loop if we don't find any tracks on first iteration:
+
+	//if we fail to find a track at the current hit requirement; we reduce the number of hits required:
+	//If the number of hits required falls below 3, we exit the loop:
+	//If we DO find a track at the current hit requirement, we look for more tracks at the current
+	//hit requirement before dropping the hit requirement.
+	
+	if( !foundtrack ) nhitsrequired--; 
+	
+      } //while( nhitsrequired >= TOTAL_REQUIRED_HIT )
+	    
+	//cout << "nhitsrequired = " << nhitsrequired << endl;
+    } //while( foundtrack ) //If we found a track on this try, look for more tracks! 
+  }
+}
+
 int get_nearest_module( trackdata_t trdata, int ilayer, int itrack=0 ){
   int bestmod = -1;
   double r2min = 0.0;
@@ -3165,7 +3805,7 @@ int get_nearest_module( trackdata_t trdata, int ilayer, int itrack=0 ){
   return bestmod; 
 }
 
-void GEM_reconstruct( const char *filename, const char *configfilename, const char *outfilename="temp.root" ){
+void GEM_reconstruct_standalone_consolidated( const char *filename, const char *configfilename, const char *outfilename="temp.root" ){
   auto program_start = high_resolution_clock::now(); //starting time of the program --WX
   //Initialize walk correction parameters:
   double walkcor_mean_params[3] = {walkcor_mean_const, walkcor_mean_ADC0, walkcor_mean_exp};
@@ -3798,8 +4438,12 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
   c1->Divide( maxnmodperlayer,nlayers,.001,.001);
 
   //Now let's create a histogram to display the strip ADC histos event by event:
-  TCanvas *c2 = new TCanvas("c2","c2",2000,1500);
-  c2->Divide( 2, nmodules, .001,.001);
+  TCanvas *c2x = new TCanvas("c2x","c2x",2400,1500); 
+  c2x->Divide( maxnmodperlayer, nlayers, .001,.001);
+
+  //Now let's create a histogram to display the strip ADC histos event by event:
+  TCanvas *c2y = new TCanvas("c2y","c2y",2400,1500); 
+  c2y->Divide( maxnmodperlayer, nlayers, .001,.001);
   
   TCanvas *c_proj = new TCanvas("c1_proj","c1_proj",1200,800);
   c_proj->Divide(2,1);
@@ -4361,14 +5005,19 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
 					   nbinsx_hitmap, -mod_Lx[imodule]/2.0-10.0,mod_Lx[imodule]/2.0+10.0 );
     
   }
+
+  NSKIPPED = 0;
   
   while( C->GetEntry(nevent++) && (NMAX < 0 || nevent-firstevent < NMAX ) ){
-    if( nevent % 1000 == 0 ) cout << nevent << endl;
+    /*if( nevent % 1000 == 0 )*/ //cout << nevent << endl;
 
     EventID = evtID;
     
-    //cout << "Processing event " << nevent << endl;
-    
+    if( (nevent-firstevent)%1000 == 0 ){
+
+      cout << "Processing event " << EventID << ", total event count = " << nevent << endl;
+
+    }
     //Clustering and hit reconstruction:
 
     set<int> modules_hit;
@@ -4854,13 +5503,15 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
 	
 	
 	// cout << "starting cluster finding, event " << evtID << ", module " << module << ". (nstrip X, nstrip Y) = (" << ModData[module].xstrips.size()
-	//      << ", " << ModData[module].ystrips.size() << ")" << endl;
+	//      << ", " << ModData[module].ystrips.size() << ")...";
 	//int clusterflag = find_clusters_by_module_new( ModData[module], clusttemp );
 
 	
 	
 	int clusterflag = find_clusters_by_module_newnew( ModData[module], clusttemp );
 
+	//cout << "   ...done" << endl;
+	
 	//NEW NEW clustering works, we need to track down and eliminate places where we assume
 	// that nclustx == nclusty == nclust2D
 	
@@ -4891,77 +5542,6 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
 
 	hNclustX_vs_NclustY->Fill( clusttemp.nclusty, clusttemp.nclustx );
 
-	//	hNhitX_vs_NhitY->Fill( clusttemp.nhity1D, clusttemp.nhitx1D );
-	
-	// for( int ihitx=0; ihitx<clusttemp.nhitx1D; ihitx++ ){
-	//   if( clusttemp.nstripx[clusttemp.clustidx_xhit[ihitx]]>2 ){
-	//     hHitAxfit->Fill( clusttemp.Axhit1D[ihitx] );
-	//     hHitXChi2NDF->Fill( clusttemp.chi2ndf_hitx1D[ihitx] );
-
-	//     if( clusttemp.Axhit1D[ihitx] < 2200.0 ){
-	//       hHitTX0fit->Fill( clusttemp.tx0hit1D[ihitx] );
-	   
-	//       //if( clusttemp.nstripx[clusttemp.clustidx_xhit[ihitx]] > 1 )
-	//       hHitXTaufit->Fill( clusttemp.taux0hit1D[ihitx] );
-	//       hHitXSigmaXfit->Fill( clusttemp.sigx0hit1D[ihitx] );
-	//     }
-	//   }
-	// }
-	
-	// for( int ihity=0; ihity<clusttemp.nhity1D; ihity++ ){
-	//   if( clusttemp.nstripy[clusttemp.clustidx_yhit[ihity]] > 2 ){
-	//     hHitYChi2NDF->Fill( clusttemp.chi2ndf_hity1D[ihity] );
-	//     hHitAyfit->Fill( clusttemp.Ayhit1D[ihity] );
-	    
-	//     if( clusttemp.Ayhit1D[ihity] < 2200.0 ){ //cut out "saturation" events from these hits:
-	//       hHitTY0fit->Fill( clusttemp.ty0hit1D[ihity] );	      
-	//       hHitYSigmaYfit->Fill( clusttemp.sigy0hit1D[ihity] );
-	//       hHitYTaufit->Fill( clusttemp.tauy0hit1D[ihity] );
-	//     }
-	//   }
-	// }
-
-	//	for( int ihit2D=0; ihit2D<clusttemp.nhit2D; ihit2D++ ){
-	// for( int ihit2D=0; ihit2D<TMath::Min(1,clusttemp.nhit2D); ihit2D++ ){
-
-	//   if( clusttemp.nstripx[clusttemp.clustidx_xhit[clusttemp.ixhit2D[ihit2D]]] > 2 &&
-	//       clusttemp.nstripy[clusttemp.clustidx_yhit[clusttemp.iyhit2D[ihit2D]]] > 2 ){
-	  
-	//     hHit2D_ADCXvsY->Fill( clusttemp.Axhit1D[clusttemp.ixhit2D[ihit2D]],
-	// 			  clusttemp.Ayhit1D[clusttemp.iyhit2D[ihit2D]] );
-	//     hHit2D_T0XvsY->Fill( clusttemp.tx0hit1D[clusttemp.ixhit2D[ihit2D]],
-	// 			 clusttemp.ty0hit1D[clusttemp.iyhit2D[ihit2D]] );
-	    
-	//     hHit2D_ADCdiff->Fill( clusttemp.dAhit2D[ihit2D] );
-	//     hHit2D_T0diff->Fill( clusttemp.dthit2D[ihit2D] );
-	    
-	//     hHit2D_Chi2Match->Fill( clusttemp.chi2match2D[ihit2D] );
-	    
-	//     hHit2D_ADCasym->Fill( clusttemp.dAhit2D[ihit2D]/(2.*clusttemp.Ahit2D[ihit2D]) );
-	//   }
-	// }
-
-	//cout << "nclust2D = " << clusttemp.nclust2D << endl;
-	
-	// for( int iclust2D=0; iclust2D<clusttemp.nclust2D; iclust2D++ ){
-	//   //if( clusttemp.nstripx2D[iclust2D]>1&&clusttemp.nstripy2D[iclust2D]>1 ){
-	//   if( clusttemp.itrack_clust2D[iclust2D] >= 0 ){ //only fill this information if the cluster is on a found track:
-	//     hClust2D_ADCXvsY->Fill( clusttemp.totalchargex[clusttemp.ixclust2D[iclust2D]],
-	// 			    clusttemp.totalchargey[clusttemp.iyclust2D[iclust2D]] );
-	//     hClust2D_T0XvsY->Fill( clusttemp.txmean[clusttemp.ixclust2D[iclust2D]],
-	// 			   clusttemp.tymean[clusttemp.iyclust2D[iclust2D]] );
-	//     hClust2D_ADCdiff->Fill( clusttemp.dEclust2D[iclust2D] );
-	//     hClust2D_Tdiff->Fill( clusttemp.dtclust2D[iclust2D] );
-	//     hClust2D_ADCasym->Fill( clusttemp.dEclust2D[iclust2D]/(2.0*clusttemp.Eclust2D[iclust2D]) );
-	//     hClust2D_ADCasym_vs_ADCavg->Fill( clusttemp.Eclust2D[iclust2D], clusttemp.dEclust2D[iclust2D]/(2.0*clusttemp.Eclust2D[iclust2D]) );
-	//     hClust2D_ADCdiff_vs_ADCavg->Fill( clusttemp.Eclust2D[iclust2D], clusttemp.dEclust2D[iclust2D] );
-	  
-	//     hStrip_maxcor->Fill( clusttemp.CorrCoeff2D[iclust2D] );
-
-	//     hClust2D_NstripXvsNstripY->Fill( clusttemp.nstripy2D, clusttemp.nstripx2D );
-	//   }
-	//   //}
-	// }
       }
 
       int nlayers_with_2Dclust = 0;
@@ -4979,22 +5559,24 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
 
       if( nlayers_with_2Dclust >= TOTAL_REQUIRED_HIT ){
 
-	//cout << "Finding tracks, event... " << evtID << endl;
+	//cout << "Finding tracks, event... " << evtID << ", total event count = " << nevent << endl;
 	
 	auto start = high_resolution_clock::now();
 	//define the forward and backward constraint points
 	TVector3 fcp(0, 0, zavg_layer[0] - 10);
 	TVector3 bkp(0, 0, zavg_layer[nlayers-1] + 10);
 
-	if( TrackingAlgorithmFlag != 0 ){
+	if( TrackingAlgorithmFlag == 1 ){
 	  new_find_tracks( mod_clusters, tracktemp, fcp, bkp);
+	} else if (TrackingAlgorithmFlag == 0 ){
+	  find_tracks_old( mod_clusters, tracktemp );
 	} else {
-	  find_tracks( mod_clusters, tracktemp );
+	  find_tracks(mod_clusters, tracktemp );
 	}
 	auto end = high_resolution_clock::now();
 	totalTime += duration_cast<nanoseconds>(end - start);
 	
-	//cout << "track finding successful..." << endl;
+	//cout << "track finding successful, event..." << evtID << endl;
 	
 	hNtracks_found->Fill( tracktemp.ntracks );
 	
@@ -5703,9 +6285,9 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
 	  }
 
 	  //Now let's draw the strip ADC histograms:
-	  c2->cd(1+2*module);
+	  c2x->cd(module_ipad[module]);
 	  ( (TH1D*) (*hmod_ADC_vs_Xstrip)[module] )->Draw("hist");
-	  c2->cd(2+2*module);
+	  c2y->cd(module_ipad[module]);
 	  ( (TH1D*) (*hmod_ADC_vs_Ystrip)[module] )->Draw("hist");
 	  
 	}
@@ -5823,7 +6405,7 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
 	      for( int istripx=clusttemp.ixstriplo[ixclust]; istripx<=clusttemp.ixstriphi[ixclust]; istripx++ ){
 		double xADC = clusttemp.xstripADCsum[ixclust][stripcount];
 		
-		c2->cd( 1 + 2*module );
+		c2x->cd( module_ipad[module] );
 		MstripADC.DrawMarker( istripx,xADC );
 		stripcount++;
 		//( (*TH1D) (*hmod_ADC_vs_Xstrip_good)[module] )->Fill( istripx, xADC );
@@ -5839,7 +6421,7 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
 	      for( int istripy=clusttemp.iystriplo[iyclust]; istripy<=clusttemp.iystriphi[iyclust]; istripy++ ){
 		double yADC = clusttemp.ystripADCsum[iyclust][stripcount];
 
-		c2->cd( 2 + 2*module );
+		c2y->cd( module_ipad[module] );
 		MstripADC.DrawMarker( istripy,yADC );
 		stripcount++;
 	      }
@@ -5942,7 +6524,8 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
 	if( reply.BeginsWith("p") ){
 	  TString pdffilename;
 	  c1->Print( pdffilename.Format( "plots/c1_event_%d.pdf", nevent ), "pdf");
-	  c2->Print( pdffilename.Format( "plots/c2_event_%d.pdf", nevent ), "pdf");
+	  c2x->Print( pdffilename.Format( "plots/c2x_event_%d.pdf", nevent ), "pdf");
+	  c2y->Print( pdffilename.Format( "plots/c2y_event_%d.pdf", nevent ), "pdf");
 	  c_proj->Print( pdffilename.Format( "plots/cproj_event_%d.pdf", nevent ), "pdf");
 	}
       }
@@ -6025,6 +6608,9 @@ void GEM_reconstruct( const char *filename, const char *configfilename, const ch
   cout<<"total program execution time: "<<(double)program_time.count() / 1e9<<" seconds" <<endl;
   
   cout<<"fraction of time spent in track-finding: "<<((double)totalTime.count()/(double)program_time.count())<<endl;
+
+  cout << "Number of events with tracking skipped due to too many hit combos = " << NSKIPPED << ", Total events processed = "
+       << nevent - firstevent << endl;
 }
 
 
