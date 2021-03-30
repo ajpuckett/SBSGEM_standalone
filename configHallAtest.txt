@@ -80,9 +80,10 @@ tstripcut_nsigma 5.0
 #NMAX 100000000
 NMAX 2000000
 #clustmap_fname HallA_allevents_with_moments.root
-TrackingAlgorithm 0
-eventdisplay 1
-firstevent 13
-maxneighborsx 10
-maxneighborsy 10
+TrackingAlgorithm 2
+eventdisplay 0
+firstevent 0
+maxneighborsx 5
+maxneighborsy 5
+maxhitcombos 1000000
 endconfig

@@ -118,10 +118,11 @@ trackmaxslopeX 1.0
 trackmaxslopeY 0.5
 maxADCXYthreshold 5000.0
 tstripcut_nsigma 5.0
-NMAX 100000
+NMAX 1000000
 reusestripsflag 1
-TrackingAlgorithm 0
+TrackingAlgorithm 2
 maxneighborsx 5
 maxneighborsy 4
+maxhitcombos 1000000
 firstevent 0
 endconfig

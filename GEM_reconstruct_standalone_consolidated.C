@@ -3405,12 +3405,8 @@ void find_tracks( map<int,clusterdata_t> mod_clusters, trackdata_t &trackdata ){
 
 	    int minlayer = nlayers+1;
 	    int maxlayer = -1;
-
-	    //to speed the tracking, find the two layers with the lowest and second-lowest free hit counts: 
-	    //but before we do that, let's relax the tracking cut: 
-	    //This can help 
 	    
-	    int testlayer1=minlayer,testlayer2=maxlayer;
+	    //int testlayer1=minlayer,testlayer2=maxlayer;
 	    
 	    for( int ihit=0; ihit<nhitsrequired; ihit++ ){
 
@@ -3429,7 +3425,7 @@ void find_tracks( map<int,clusterdata_t> mod_clusters, trackdata_t &trackdata ){
 	    }
 
 	    if( layerstotest.size() < nhitsrequired ) { //skip this combination of layers if there aren't enough fired layers to make a track
-	      break;
+	      continue;
 	    }	 
 
 	    long ncombos_minmax = Nfreehits_layer[minlayer]*Nfreehits_layer[maxlayer];
@@ -3495,14 +3491,14 @@ void find_tracks( map<int,clusterdata_t> mod_clusters, trackdata_t &trackdata ){
 		hitcombo[minlayer] = hitmin;
 		hitcombo[maxlayer] = hitmax;
 		  
-		//Now loop over all intermediate layers and find the hit with the minimum residual to the CURRENT linear fit in each layer;
-		//But always keep at least 1:
+		//Now loop over all intermediate layers and find the hit which gives the smallest chi^2 when combined with the current layers on the track in a linear fit:
+		
 		for( int layer=minlayer+1; layer<maxlayer; layer++ ){
 		  if( layerstotest.find(layer)!=layerstotest.end() ){ //if this layer is in the list of layers we are currently considering:
-		    int khit_minresid=-1;
+		    int khit_best=-1;
 		    double minresid2 = 0.0;
 
-		    ontrack[layer] = false; //initialize ontrack for this layer to false in order to avoid undefined behavior
+		    ontrack[layer] = true; //initialize ontrack for this layer to false in order to avoid undefined behavior
 		    
 		    int modbest, hitbest=-1;
 		    double xbest,ybest,zbest;
@@ -3531,9 +3527,9 @@ void find_tracks( map<int,clusterdata_t> mod_clusters, trackdata_t &trackdata ){
 			
 		      double resid2hit = pow( uhitk - utrack_k, 2 ) + pow( vhitk - vtrack_k, 2 ); //
 
-		      if( khit_minresid < 0 || resid2hit < minresid2 ){ //either this is the first hit we are considering in this layer or at has the smallest
+		      if( khit_best < 0 || resid2hit < minresid2 ){ //either this is the first hit we are considering in this layer or it has the smallest
 			//squared residual with the current track:
-			khit_minresid = hitk; //use index in the free hit list for convenience. We may want to revisit this choice
+			khit_best = hitk; //use index in the free hit list for convenience. We may want to revisit this choice
 			minresid2 = resid2hit;
 
 			modbest = modk;
@@ -3543,13 +3539,13 @@ void find_tracks( map<int,clusterdata_t> mod_clusters, trackdata_t &trackdata ){
 			zbest = zhitk;
 			
 		      }
-		    }
+		    } //end loop over unused hits in each intermediate layer
 
 		    //if the closest hit in this layer to the current straight-line projection of the track is on a good track
 		    double ndf_temp = double(2*(nhits+1)-4);
 		    //chi2 contribution of this hit wrt the straight-line fit to all previous hits is resid2/sigma^2
 		    // chi2/ndf < TrackChi2Cut 
-		    if( hitbest >= 0 && minresid2 / pow(sigma_hitpos,2) <= 2.0*TrackChi2Cut ){
+		    if( hitbest >= 0 ){
 		      //this might be a good track: add this hit to the combo and update the linear fit:
 		      ontrack[layer] = true;
 		      hitcombo[layer] = hitbest;
@@ -3564,16 +3560,16 @@ void find_tracks( map<int,clusterdata_t> mod_clusters, trackdata_t &trackdata ){
 
 		      nhits++;
 
-		      //let's see what happens if we DON'T do this 
+		      //update sums,
+		      // but don't update track parameters until chi2 calculation
 		      //update best track based on fit to all hits in current combo:
-		      double denom = (sumz2hits*nhits - pow(sumzhits,2));
-		      xptrtemp = (nhits*sumxzhits - sumxhits*sumzhits)/denom;
-		      yptrtemp = (nhits*sumyzhits - sumyhits*sumzhits)/denom;
-		      xtrtemp = (sumz2hits*sumxhits - sumzhits*sumxzhits)/denom;
-		      ytrtemp = (sumz2hits*sumyhits - sumzhits*sumyzhits)/denom;
+		      // double denom = (sumz2hits*nhits - pow(sumzhits,2));
+		      // xptrtemp = (nhits*sumxzhits - sumxhits*sumzhits)/denom;
+		      // yptrtemp = (nhits*sumyzhits - sumyhits*sumzhits)/denom;
+		      // xtrtemp = (sumz2hits*sumxhits - sumzhits*sumxzhits)/denom;
+		      // ytrtemp = (sumz2hits*sumyhits - sumzhits*sumyzhits)/denom;
 			
-		    } //check that the hit with smallest residual to the current track within this layer (a) exists and (b) has residual less than max residual
-		      
+		    } 
 		  } //test if current intermediate layer is in the list of layers to test
 		} //end loop over intermediate layers
 		  
@@ -3581,8 +3577,6 @@ void find_tracks( map<int,clusterdata_t> mod_clusters, trackdata_t &trackdata ){
 		
 		//
 		if( nhits >= nhitsrequired ){ //calculate chi2, and update best hit combo as applicable:
-
-		  //let's see what happens if we DON'T do this 
 		  //update best track based on fit to all hits in current combo:
 		  double denom = (sumz2hits*nhits - pow(sumzhits,2));
 		  xptrtemp = (nhits*sumxzhits - sumxhits*sumzhits)/denom;
@@ -3638,8 +3632,8 @@ void find_tracks( map<int,clusterdata_t> mod_clusters, trackdata_t &trackdata ){
 		      xresid_layer[layer] = uhittemp - utracktemp;
 		      yresid_layer[layer] = vhittemp - vtracktemp;
 		      
-		    }
-		  }
+		    } //end check if layer on track
+		  } //end loop over layers for chi2 and residual calculation
 		
 		  if( ngoodcombos == 0 || chi2/double(ndf) < bestchi2 ){
 		    bestchi2 = chi2/double(ndf);
