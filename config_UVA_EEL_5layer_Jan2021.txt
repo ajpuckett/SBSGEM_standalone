@@ -80,16 +80,18 @@ threshold_stripsum  0.0
 threshold_clustersum 200.0
 trackchi2cut 300.0
 trackmaxradius 30.0 # mm, max radial separation between hit and projection of track from previous layers to add hit to track.
-trackmaxslopeX 1.0
-trackmaxslopeY 1.0
+#trackmaxslopeX 1.0
+#trackmaxslopeY 1.0
 #maxADCXYthreshold 1000.0
 tstripcut_nsigma 10000.0
 NMAX 250000
 TrackingAlgorithm 2
-maxhitcombos 100000000
-NMAX 30000
-maxneighborsX 5
-maxneighborsY 5
+maxhitcombos 300000
+NMAX 10000000
+maxneighborsx 5
+maxneighborsy 5
 eventdisplay 0
 firstevent 0
+trackmaxslopeX 0.5
+trackmaxslopeY 1.2
 endconfig

@@ -3298,10 +3298,12 @@ void find_tracks( map<int,clusterdata_t> mod_clusters, trackdata_t &trackdata ){
       }
     }
   }
-
+  
   if( layers_2Dmatch.size() >= TOTAL_REQUIRED_HIT ){
     //trackdata_t trackdatatemp;
 
+    bool skipped = true;
+    
     trackdata.ntracks = 0;
     
     bool foundtrack=true;
@@ -3314,11 +3316,17 @@ void find_tracks( map<int,clusterdata_t> mod_clusters, trackdata_t &trackdata ){
 
       //If we don't find a good track at nhitsrequired hits, we can decrement the required number of hits as long as it is greater than the minimum
       // of TOTAL_REQUIRED_HIT:
+
+      bool foundgoodpair = false;
+
+     
+      
       while( nhitsrequired >= TOTAL_REQUIRED_HIT ){ //first iteration: determine number of layers with (unused) hits, populate lists of unused hits, count number of combinations,
 	//etc:
 	
 	foundtrack = false;
-
+	foundgoodpair = false;
+	
 	//here we populate the lists of free hits by layer: if we found a track on the previous iteration, some hits will have been marked as used
 	//if we didn't find a track, then no hits will have been marked as used, but the number of hits required to
 	//make a track will have been decremented:
@@ -3353,13 +3361,13 @@ void find_tracks( map<int,clusterdata_t> mod_clusters, trackdata_t &trackdata ){
 	//this will get us stuck in an infinite loop if we don't find a track: comment out
 	//nhitsrequired = layerswithfreehits.size();
 
-	if( ncombosremaining > maxnhitcombinations || ncombosremaining < 0 ){
-	  //cout << "too many hit combos, skipping tracking for this event..." << endl;
+	//if( ncombosremaining > maxnhitcombinations || ncombosremaining < 0 ){
+	  //   cout << "too many hit combos, skipping tracking for this event..." << endl;
 
-	  if( trackdata.ntracks == 0 && nhitsrequired == layers_2Dmatch.size() ) NSKIPPED++;
+	  //   if( trackdata.ntracks == 0 && nhitsrequired == layers_2Dmatch.size() ) NSKIPPED++;
 	  
-	  return;
-	}
+	//   return;
+	// }
 
 	//	cout << "Starting tracking, ncombosremaining = " << ncombosremaining << endl;
 	
@@ -3396,6 +3404,8 @@ void find_tracks( map<int,clusterdata_t> mod_clusters, trackdata_t &trackdata ){
 	  int ngoodcombos=0; //number of plausible track candidates found:
 
 	  //onbesttrack.clear();
+
+	  foundgoodpair = false;
 	  
 	  for( int icombo=0; icombo<layercombos[nhitsrequired].size(); icombo++ ){ //loop over all possible combinations of nhitsrequired LAYERS with available hits:
 
@@ -3407,6 +3417,8 @@ void find_tracks( map<int,clusterdata_t> mod_clusters, trackdata_t &trackdata ){
 	    int maxlayer = -1;
 	    
 	    //int testlayer1=minlayer,testlayer2=maxlayer;
+
+	    long ncombosremaining = 1;
 	    
 	    for( int ihit=0; ihit<nhitsrequired; ihit++ ){
 
@@ -3421,15 +3433,68 @@ void find_tracks( map<int,clusterdata_t> mod_clusters, trackdata_t &trackdata ){
 		minlayer = (layeri < minlayer ) ? layeri : minlayer;
 		maxlayer = (layeri > maxlayer ) ? layeri : maxlayer;
 
+		ncombosremaining *= Nfreehits_layer[layeri];
+		
 	      }
 	    }
 
 	    if( layerstotest.size() < nhitsrequired ) { //skip this combination of layers if there aren't enough fired layers to make a track
 	      continue;
 	    }	 
-
+	    
 	    long ncombos_minmax = Nfreehits_layer[minlayer]*Nfreehits_layer[maxlayer];
 
+	    long nhits_otherlayers = 0;
+	    for( set<int>::iterator ilay=layerstotest.begin(); ilay != layerstotest.end(); ++ilay ){
+	      if( *ilay != minlayer && *ilay != maxlayer ){ 
+		nhits_otherlayers += Nfreehits_layer[*ilay];
+	      }
+	    }
+
+	    long ncombostocheck = ncombos_minmax * nhits_otherlayers;
+	    
+	    foundgoodpair = ncombostocheck >= 1 && ncombostocheck <= maxnhitcombinations;   
+	    
+	    if( !foundgoodpair ){
+	      //if the outermost layers have too many hit combinations, find the combination of layers
+	      // with the largest lever arm in z such that the number of combinations is less than the
+	      //maximum:
+	      
+	      int maxdiff=0;
+	      for( set<int>::iterator ilay=layerstotest.begin(); ilay!=layerstotest.end(); ++ilay ){
+		int layeri = *ilay;
+		for( set<int>::iterator jlay=ilay; jlay!=layerstotest.end(); ++jlay ){
+		  int layerj = *jlay;
+		  if( layerj > layeri ){
+		    long ncombostest = Nfreehits_layer[layeri]*Nfreehits_layer[layerj];
+
+		    nhits_otherlayers = 0;
+		    for( set<int>::iterator klay=layerstotest.begin(); klay != layerstotest.end(); ++klay ){
+		      if( *klay != layeri && *klay != layerj ){
+			nhits_otherlayers += Nfreehits_layer[*klay];
+		      }
+		    }
+
+		    ncombostest *= nhits_otherlayers;
+		    
+		    if( ncombostest <= maxnhitcombinations && ncombostest >= 1 &&
+			layerj - layeri > maxdiff ){ //we found a good pair
+		      foundgoodpair = true;
+		      minlayer = layeri;
+		      maxlayer = layerj;
+		      maxdiff = layerj - layeri;
+		    }
+		  }
+		}
+	      }
+	    }
+	    //if we don't find any pair with an acceptably low number of hit combinations to test for the current layer combination
+	    //we skip this layer combination:
+	    if( !foundgoodpair ){  
+	      continue;
+	    } else { //If we consider ANY combination of layers, we did not skip attempted track finding for this event:
+	      skipped = false;
+	    }
 	    // if( ncombos_minmax > maxnhitcombinations || ncombos_minmax < 0 ) {
 	    //   cout << "warning, skipping layer combination due to too many hit combinations, icombo, minlayer, maxlayer, nhitsrequired, ncombos, ntracks = "
 	    // 	   << icombo << ", " << minlayer << ", " << maxlayer << ", " << nhitsrequired << ", " << ncombos_minmax << ", " << trackdata.ntracks << endl ;
@@ -3492,88 +3557,97 @@ void find_tracks( map<int,clusterdata_t> mod_clusters, trackdata_t &trackdata ){
 		hitcombo[maxlayer] = hitmax;
 		  
 		//Now loop over all intermediate layers and find the hit which gives the smallest chi^2 when combined with the current layers on the track in a linear fit:
+
+		//only test other layers for hit combinations that pass the track slope cuts:
+		if( abs( xptrtemp ) <= TrackMaxSlopeX && abs(yptrtemp) <= TrackMaxSlopeY ){
 		
-		for( int layer=minlayer+1; layer<maxlayer; layer++ ){
-		  if( layerstotest.find(layer)!=layerstotest.end() ){ //if this layer is in the list of layers we are currently considering:
-		    int khit_best=-1;
-		    double minresid2 = 0.0;
+		  //for( int layer=minlayer+1; layer<maxlayer; layer++ ){
+		  for( set<int>::iterator ilay=layerstotest.begin(); ilay != layerstotest.end(); ++ilay ){
 
-		    ontrack[layer] = true; //initialize ontrack for this layer to false in order to avoid undefined behavior
+		    int layer = *ilay;
+		
+		    //if( layerstotest.find(layer)!=layerstotest.end() ){ //if this layer is in the list of layers we are currently considering:
+		    if( layer != maxlayer && layer != minlayer ){
+		      int khit_best=-1;
+		      double minresid2 = 0.0;
+
+		      ontrack[layer] = true; //initialize ontrack for this layer to false in order to avoid undefined behavior
 		    
-		    int modbest, hitbest=-1;
-		    double xbest,ybest,zbest;
+		      int modbest, hitbest=-1;
+		      double xbest,ybest,zbest;
 		    
-		    for( int khit=0; khit<freehitlist_layer[layer].size(); khit++ ){
-		      int hitk = freehitlist_layer[layer][khit];
-		      int modk = modindexhit2D[layer][hitk];
-		      int clustk = clustindexhit2D[layer][hitk];
+		      for( int khit=0; khit<freehitlist_layer[layer].size(); khit++ ){
+			int hitk = freehitlist_layer[layer][khit];
+			int modk = modindexhit2D[layer][hitk];
+			int clustk = clustindexhit2D[layer][hitk];
 
-		      double xhitk = mod_clusters[modk].xglobal2D[clustk];
-		      double yhitk = mod_clusters[modk].yglobal2D[clustk];
-		      double zhitk = mod_clusters[modk].zglobal2D[clustk];
+			double xhitk = mod_clusters[modk].xglobal2D[clustk];
+			double yhitk = mod_clusters[modk].yglobal2D[clustk];
+			double zhitk = mod_clusters[modk].zglobal2D[clustk];
 
-		      double uhitk = mod_clusters[modk].xclust2Dcorr[clustk];
-		      double vhitk = mod_clusters[modk].yclust2Dcorr[clustk];
+			double uhitk = mod_clusters[modk].xclust2Dcorr[clustk];
+			double vhitk = mod_clusters[modk].yclust2Dcorr[clustk];
 
-		      double trackxproj = xtrtemp + xptrtemp * zhitk;
-		      double trackyproj = ytrtemp + yptrtemp * zhitk;
-		      TVector3 trackpos_global( trackxproj, trackyproj, zhitk );
-		      TVector3 modcenter_global( mod_x0[modk], mod_y0[modk], mod_z0[modk] );
+			double trackxproj = xtrtemp + xptrtemp * zhitk;
+			double trackyproj = ytrtemp + yptrtemp * zhitk;
+			TVector3 trackpos_global( trackxproj, trackyproj, zhitk );
+			TVector3 modcenter_global( mod_x0[modk], mod_y0[modk], mod_z0[modk] );
 
-		      TVector3 trackpos_local = mod_Rotinv[modk] * (trackpos_global - modcenter_global);
+			TVector3 trackpos_local = mod_Rotinv[modk] * (trackpos_global - modcenter_global);
 
-		      double utrack_k = trackpos_local.X()*mod_Pxu[modk] + trackpos_local.Y()*mod_Pyu[modk];
-		      double vtrack_k = trackpos_local.X()*mod_Pxv[modk] + trackpos_local.Y()*mod_Pyv[modk];
+			double utrack_k = trackpos_local.X()*mod_Pxu[modk] + trackpos_local.Y()*mod_Pyu[modk];
+			double vtrack_k = trackpos_local.X()*mod_Pxv[modk] + trackpos_local.Y()*mod_Pyv[modk];
 			
-		      double resid2hit = pow( uhitk - utrack_k, 2 ) + pow( vhitk - vtrack_k, 2 ); //
+			double resid2hit = pow( uhitk - utrack_k, 2 ) + pow( vhitk - vtrack_k, 2 ); //
 
-		      if( khit_best < 0 || resid2hit < minresid2 ){ //either this is the first hit we are considering in this layer or it has the smallest
-			//squared residual with the current track:
-			khit_best = hitk; //use index in the free hit list for convenience. We may want to revisit this choice
-			minresid2 = resid2hit;
+			if( khit_best < 0 || resid2hit < minresid2 ){ //either this is the first hit we are considering in this layer or it has the smallest
+			  //squared residual with the current track:
+			  khit_best = hitk; //use index in the free hit list for convenience. We may want to revisit this choice
+			  minresid2 = resid2hit;
 
-			modbest = modk;
-			hitbest = hitk;
-			xbest = xhitk;
-			ybest = yhitk;
-			zbest = zhitk;
+			  modbest = modk;
+			  hitbest = hitk;
+			  xbest = xhitk;
+			  ybest = yhitk;
+			  zbest = zhitk;
 			
-		      }
-		    } //end loop over unused hits in each intermediate layer
+			}
+		      } //end loop over unused hits in each intermediate layer
+		    
+		      //if the closest hit in this layer to the current straight-line projection of the track is on a good track
+		      double ndf_temp = double(2*(nhits+1)-4);
+		      //chi2 contribution of this hit wrt the straight-line fit to all previous hits is resid2/sigma^2
+		      // chi2/ndf < TrackChi2Cut 
+		      if( hitbest >= 0 ){
+			//this might be a good track: add this hit to the combo and update the linear fit:
+			ontrack[layer] = true;
+			hitcombo[layer] = hitbest;
 
-		    //if the closest hit in this layer to the current straight-line projection of the track is on a good track
-		    double ndf_temp = double(2*(nhits+1)-4);
-		    //chi2 contribution of this hit wrt the straight-line fit to all previous hits is resid2/sigma^2
-		    // chi2/ndf < TrackChi2Cut 
-		    if( hitbest >= 0 ){
-		      //this might be a good track: add this hit to the combo and update the linear fit:
-		      ontrack[layer] = true;
-		      hitcombo[layer] = hitbest;
+			//update sums:
+			sumxhits += xbest;
+			sumyhits += ybest;
+			sumzhits += zbest;
+			sumxzhits += xbest*zbest;
+			sumyzhits += ybest*zbest;
+			sumz2hits += pow(zbest,2);
 
-		      //update sums:
-		      sumxhits += xbest;
-		      sumyhits += ybest;
-		      sumzhits += zbest;
-		      sumxzhits += xbest*zbest;
-		      sumyzhits += ybest*zbest;
-		      sumz2hits += pow(zbest,2);
+			nhits++;
 
-		      nhits++;
-
-		      //update sums,
-		      // but don't update track parameters until chi2 calculation
-		      //update best track based on fit to all hits in current combo:
-		      // double denom = (sumz2hits*nhits - pow(sumzhits,2));
-		      // xptrtemp = (nhits*sumxzhits - sumxhits*sumzhits)/denom;
-		      // yptrtemp = (nhits*sumyzhits - sumyhits*sumzhits)/denom;
-		      // xtrtemp = (sumz2hits*sumxhits - sumzhits*sumxzhits)/denom;
-		      // ytrtemp = (sumz2hits*sumyhits - sumzhits*sumyzhits)/denom;
+			//update sums,
+			// but don't update track parameters until chi2 calculation
+			//update best track based on fit to all hits in current combo:
+			// double denom = (sumz2hits*nhits - pow(sumzhits,2));
+			// xptrtemp = (nhits*sumxzhits - sumxhits*sumzhits)/denom;
+			// yptrtemp = (nhits*sumyzhits - sumyhits*sumzhits)/denom;
+			// xtrtemp = (sumz2hits*sumxhits - sumzhits*sumxzhits)/denom;
+			// ytrtemp = (sumz2hits*sumyhits - sumzhits*sumyzhits)/denom;
 			
-		    } 
-		  } //test if current intermediate layer is in the list of layers to test
-		} //end loop over intermediate layers
-		  
-
+		      } 
+		    } //test if current intermediate layer is in the list of layers to test
+		  } //end loop over intermediate layers
+		} //end check if the slope of the track formed from the min and max hits is within the allowed limits
+		
+		
 		
 		//
 		if( nhits >= nhitsrequired ){ //calculate chi2, and update best hit combo as applicable:
@@ -3655,7 +3729,7 @@ void find_tracks( map<int,clusterdata_t> mod_clusters, trackdata_t &trackdata ){
 	      } //end loop over free hits in max layer (topmost layer)
 	    } //end loop over free hits in min layer (bottom-most layer)
 	  } //end loop over all possible combinations of nhitsrequired layers
-
+	  
 
 	  if( ngoodcombos > 0 && bestchi2 < TrackChi2Cut ){ //add track to global track arrays and mark hits as used:
 	    foundtrack = true;
@@ -3757,13 +3831,17 @@ void find_tracks( map<int,clusterdata_t> mod_clusters, trackdata_t &trackdata ){
 	//If we DO find a track at the current hit requirement, we look for more tracks at the current
 	//hit requirement before dropping the hit requirement.
 	
-	if( !foundtrack ) nhitsrequired--; 
+	if( !foundtrack ) {
+	  //if( nhitsrequired == TOTAL_REQUIRED_HIT && !foundgoodpair && trackdata.ntracks == 0 ) NSKIPPED++; 
+	  nhitsrequired--;
+	}
 	
       } //while( nhitsrequired >= TOTAL_REQUIRED_HIT )
 	    
 	//cout << "nhitsrequired = " << nhitsrequired << endl;
-    } //while( foundtrack ) //If we found a track on this try, look for more tracks! 
-  }
+    } //while( foundtrack ) //If we found a track on this try, look for more tracks!
+    if( skipped ) NSKIPPED++;
+  } //total number of layers with at least one 2D cluster >= TOTAL_REQUIRED_HIT
 }
 
 int get_nearest_module( trackdata_t trdata, int ilayer, int itrack=0 ){
@@ -5007,7 +5085,7 @@ void GEM_reconstruct_standalone_consolidated( const char *filename, const char *
 
     EventID = evtID;
     
-    if( (nevent-firstevent)%1000 == 0 ){
+    if( (nevent-firstevent)%100 == 0 ){
 
       cout << "Processing event " << EventID << ", total event count = " << nevent << endl;
 
@@ -6605,6 +6683,7 @@ void GEM_reconstruct_standalone_consolidated( const char *filename, const char *
 
   cout << "Number of events with tracking skipped due to too many hit combos = " << NSKIPPED << ", Total events processed = "
        << nevent - firstevent << endl;
+  cout << "Analysis rate = " << double(nevent-firstevent)/((double) program_time.count()/1.e9) << endl;
 }
 
 
