@@ -3415,14 +3415,14 @@ void find_tracks( map<int,clusterdata_t> mod_clusters, trackdata_t &trackdata ){
 	    
 	    long ncombos_minmax = Nfreehits_layer[minlayer]*Nfreehits_layer[maxlayer];
 
-	    long nhits_otherlayers = 0;
-	    for( set<int>::iterator ilay=layerstotest.begin(); ilay != layerstotest.end(); ++ilay ){
-	      if( *ilay != minlayer && *ilay != maxlayer ){ 
-		nhits_otherlayers += Nfreehits_layer[*ilay];
-	      }
-	    }
-
-	    long ncombostocheck = ncombos_minmax * nhits_otherlayers;
+	    // long nhits_otherlayers = 0;
+	    // for( set<int>::iterator ilay=layerstotest.begin(); ilay != layerstotest.end(); ++ilay ){
+	    //   if( *ilay != minlayer && *ilay != maxlayer ){ 
+	    // 	nhits_otherlayers += Nfreehits_layer[*ilay];
+	    //   }
+	    // }
+	    
+	    long ncombostocheck = ncombos_minmax;
 	    
 	    foundgoodpair = ncombostocheck >= 1 && ncombostocheck <= maxnhitcombinations;   
 	    
@@ -3439,14 +3439,14 @@ void find_tracks( map<int,clusterdata_t> mod_clusters, trackdata_t &trackdata ){
 		  if( layerj > layeri ){
 		    long ncombostest = Nfreehits_layer[layeri]*Nfreehits_layer[layerj];
 
-		    nhits_otherlayers = 0;
-		    for( set<int>::iterator klay=layerstotest.begin(); klay != layerstotest.end(); ++klay ){
-		      if( *klay != layeri && *klay != layerj ){
-			nhits_otherlayers += Nfreehits_layer[*klay];
-		      }
-		    }
+		    // nhits_otherlayers = 0;
+		    // for( set<int>::iterator klay=layerstotest.begin(); klay != layerstotest.end(); ++klay ){
+		    //   if( *klay != layeri && *klay != layerj ){
+		    // 	nhits_otherlayers += Nfreehits_layer[*klay];
+		    //   }
+		    // }
 
-		    ncombostest *= nhits_otherlayers;
+		    //ncombostest *= nhits_otherlayers;
 		    
 		    if( ncombostest <= maxnhitcombinations && ncombostest >= 1 &&
 			layerj - layeri > maxdiff ){ //we found a good pair
@@ -3546,44 +3546,126 @@ void find_tracks( map<int,clusterdata_t> mod_clusters, trackdata_t &trackdata ){
 		    
 		      int modbest, hitbest=-1;
 		      double xbest,ybest,zbest;
-		    
-		      for( int khit=0; khit<freehitlist_layer[layer].size(); khit++ ){
-			int hitk = freehitlist_layer[layer][khit];
-			int modk = modindexhit2D[layer][hitk];
-			int clustk = clustindexhit2D[layer][hitk];
 
-			double xhitk = mod_clusters[modk].xglobal2D[clustk];
-			double yhitk = mod_clusters[modk].yglobal2D[clustk];
-			double zhitk = mod_clusters[modk].zglobal2D[clustk];
+		      //now project the temporary track to this layer, and find the appropriate bin(s) in the grid to look for hits:
+		      int nearest_module = -1;
+		      double minr2=0.;
+		      for( set<int>::iterator imod=modlist_layer[layer].begin(); imod!=modlist_layer[layer].end(); ++imod ){
+			double trackxproj = xtrtemp + xptrtemp * mod_z0[*imod];
+			double trackyproj = ytrtemp + yptrtemp * mod_z0[*imod];
+			double r2 = pow( trackxproj - mod_x0[*imod], 2 ) + pow( trackyproj - mod_y0[*imod], 2 );
 
-			double uhitk = mod_clusters[modk].xclust2Dcorr[clustk];
-			double vhitk = mod_clusters[modk].yclust2Dcorr[clustk];
-
-			double trackxproj = xtrtemp + xptrtemp * zhitk;
-			double trackyproj = ytrtemp + yptrtemp * zhitk;
-			TVector3 trackpos_global( trackxproj, trackyproj, zhitk );
-			TVector3 modcenter_global( mod_x0[modk], mod_y0[modk], mod_z0[modk] );
-
-			TVector3 trackpos_local = mod_Rotinv[modk] * (trackpos_global - modcenter_global);
-
-			double utrack_k = trackpos_local.X()*mod_Pxu[modk] + trackpos_local.Y()*mod_Pyu[modk];
-			double vtrack_k = trackpos_local.X()*mod_Pxv[modk] + trackpos_local.Y()*mod_Pyv[modk];
-			
-			double resid2hit = pow( uhitk - utrack_k, 2 ) + pow( vhitk - vtrack_k, 2 ); //
-
-			if( khit_best < 0 || resid2hit < minresid2 ){ //either this is the first hit we are considering in this layer or it has the smallest
-			  //squared residual with the current track:
-			  khit_best = hitk; //use index in the free hit list for convenience. We may want to revisit this choice
-			  minresid2 = resid2hit;
-
-			  modbest = modk;
-			  hitbest = hitk;
-			  xbest = xhitk;
-			  ybest = yhitk;
-			  zbest = zhitk;
-			
+			if( nearest_module < 0 || r2 < minr2 ){
+			  nearest_module = *imod;
+			  minr2 = r2;
 			}
-		      } //end loop over unused hits in each intermediate layer
+		      }
+
+		      //this exercise is only for the purpose of picking the appropriate grid bin within the layer:
+		      double ztest = mod_z0[nearest_module];
+		      double xtest = xtrtemp + xptrtemp*ztest;
+		      double ytest = ytrtemp + yptrtemp*ztest;
+
+		      int binxtest = int( (xtest-gridxmin_layer[layer])/gridxbinwidth );
+		      int binytest = int( (ytest-gridymin_layer[layer])/gridybinwidth );
+
+		      if( binxtest >= 0 && binxtest < gridnbinsx_layer[layer] && 
+			  binytest >= 0 && binytest < gridnbinsy_layer[layer] ){ //track projection is within limits at this layer:
+		      
+			//if x and/or y are close to the upper or lower edge of a bin, also check neighboring bins:
+			
+			double binxdiff = (xtest - (gridxmin_layer[layer]+binxtest*gridxbinwidth) );
+			double binydiff = (ytest - (gridymin_layer[layer]+binytest*gridybinwidth) );
+			
+			int binxtest_lo = binxtest, binxtest_hi = binxtest;
+			int binytest_lo = binytest, binytest_hi = binytest;
+
+			//If we are within 3 mm of the edge of the bin, test neighboring bins as well:
+			if( binxdiff < 3.0 && binxtest > 0 ) binxtest_lo = binxtest-1;
+			if( gridxbinwidth - binxdiff < 3.0 && binxtest + 1 < gridnbinsx_layer[layer] ) binxtest_hi = binxtest+1;
+			if( binydiff < 3.0 && binytest > 0 ) binytest_lo = binytest-1;
+			if( gridybinwidth - binydiff < 3.0 && binytest + 1 < gridnbinsy_layer[layer] ) binytest_hi = binytest+1;
+
+
+			for( int binx=binxtest_lo; binx<=binxtest_hi; binx++ ){
+			  for( int biny=binytest_lo; biny<=binytest_hi; biny++ ){
+			    int binxy_test = binx + gridnbinsx_layer[layer]*biny;
+
+			    for( int khit=0; khit<freehitlist_binxy_layer[layer][binxy_test].size(); khit++ ){
+			      int hitk = freehitlist_binxy_layer[layer][binxy_test][khit];
+			      int modk = modindexhit2D[layer][hitk];
+			      int clustk = clustindexhit2D[layer][hitk];
+
+			      double xhitk = mod_clusters[modk].xglobal2D[clustk];
+			      double yhitk = mod_clusters[modk].yglobal2D[clustk];
+			      double zhitk = mod_clusters[modk].zglobal2D[clustk];
+			      
+			      double uhitk = mod_clusters[modk].xclust2Dcorr[clustk];
+			      double vhitk = mod_clusters[modk].yclust2Dcorr[clustk];
+
+			      double trackxproj = xtrtemp + xptrtemp * zhitk;
+			      double trackyproj = ytrtemp + yptrtemp * zhitk;
+			      TVector3 trackpos_global( trackxproj, trackyproj, zhitk );
+			      TVector3 modcenter_global( mod_x0[modk], mod_y0[modk], mod_z0[modk] );
+
+			      TVector3 trackpos_local = mod_Rotinv[modk] * (trackpos_global - modcenter_global);
+
+			      double utrack_k = trackpos_local.X()*mod_Pxu[modk] + trackpos_local.Y()*mod_Pyu[modk];
+			      double vtrack_k = trackpos_local.X()*mod_Pxv[modk] + trackpos_local.Y()*mod_Pyv[modk];
+			
+			      double resid2hit = pow( uhitk - utrack_k, 2 ) + pow( vhitk - vtrack_k, 2 ); //
+
+			      if( hitbest < 0 || resid2hit < minresid2 ){
+				hitbest = hitk;
+				modbest = modk;
+				xbest = xhitk;
+				ybest = yhitk;
+				zbest = zhitk;
+			      }
+			      
+			    } //end loop over unused hits in grid XY bin
+			    
+			  } //end loop over (up to two) ybins in the grid
+			} //end loop over (up to two) xbins in the grid
+		      } //end check whether nearest x and y bins are within layer limits
+		      
+		      // for( int khit=0; khit<freehitlist_layer[layer].size(); khit++ ){
+		      // 	int hitk = freehitlist_layer[layer][khit];
+		      // 	int modk = modindexhit2D[layer][hitk];
+		      // 	int clustk = clustindexhit2D[layer][hitk];
+
+		      // 	double xhitk = mod_clusters[modk].xglobal2D[clustk];
+		      // 	double yhitk = mod_clusters[modk].yglobal2D[clustk];
+		      // 	double zhitk = mod_clusters[modk].zglobal2D[clustk];
+
+		      // 	double uhitk = mod_clusters[modk].xclust2Dcorr[clustk];
+		      // 	double vhitk = mod_clusters[modk].yclust2Dcorr[clustk];
+
+		      // 	double trackxproj = xtrtemp + xptrtemp * zhitk;
+		      // 	double trackyproj = ytrtemp + yptrtemp * zhitk;
+		      // 	TVector3 trackpos_global( trackxproj, trackyproj, zhitk );
+		      // 	TVector3 modcenter_global( mod_x0[modk], mod_y0[modk], mod_z0[modk] );
+
+		      // 	TVector3 trackpos_local = mod_Rotinv[modk] * (trackpos_global - modcenter_global);
+
+		      // 	double utrack_k = trackpos_local.X()*mod_Pxu[modk] + trackpos_local.Y()*mod_Pyu[modk];
+		      // 	double vtrack_k = trackpos_local.X()*mod_Pxv[modk] + trackpos_local.Y()*mod_Pyv[modk];
+			
+		      // 	double resid2hit = pow( uhitk - utrack_k, 2 ) + pow( vhitk - vtrack_k, 2 ); //
+
+		      // 	if( khit_best < 0 || resid2hit < minresid2 ){ //either this is the first hit we are considering in this layer or it has the smallest
+		      // 	  //squared residual with the current track:
+		      // 	  khit_best = hitk; //use index in the free hit list for convenience. We may want to revisit this choice
+		      // 	  minresid2 = resid2hit;
+
+		      // 	  modbest = modk;
+		      // 	  hitbest = hitk;
+		      // 	  xbest = xhitk;
+		      // 	  ybest = yhitk;
+		      // 	  zbest = zhitk;
+			
+		      // 	}
+		      // } //end loop over unused hits in each intermediate layer
 		    
 		      //if the closest hit in this layer to the current straight-line projection of the track is on a good track
 		      double ndf_temp = double(2*(nhits+1)-4);
@@ -3613,7 +3695,7 @@ void find_tracks( map<int,clusterdata_t> mod_clusters, trackdata_t &trackdata ){
 			// xtrtemp = (sumz2hits*sumxhits - sumzhits*sumxzhits)/denom;
 			// ytrtemp = (sumz2hits*sumyhits - sumzhits*sumyzhits)/denom;
 			
-		      } 
+		      } //check if we found an unused hit sufficiently close to the track at this layer
 		    } //test if current intermediate layer is in the list of layers to test
 		  } //end loop over intermediate layers
 		} //end check if the slope of the track formed from the min and max hits is within the allowed limits
@@ -4569,12 +4651,22 @@ void GEM_reconstruct_standalone_consolidated( const char *filename, const char *
 
   //Now suppose we want to plot the strip signals (U and V) by module to debug clustering and cluster-splitting:
 
+
+  //These are for event display only. We need different ones for software gain-match:
   //Histograms for ALL strips:
   TClonesArray *hmod_ADC_vs_Xstrip = new TClonesArray("TH1D",nmodules);
   TClonesArray *hmod_ADC_vs_Ystrip = new TClonesArray("TH1D",nmodules);
   //Histograms for strips included in good 2D clusters:
   TClonesArray *hmod_ADC_vs_Xstrip_good = new TClonesArray("TH1D",nmodules);
   TClonesArray *hmod_ADC_vs_Ystrip_good = new TClonesArray("TH1D",nmodules);
+
+  //Here we can also make ADC distribution plots for "gain matching" analysis:
+
+  TClonesArray *hmod_ADCmax_vs_APV_Xstrips = new TClonesArray("TH2D",nmodules);
+  TClonesArray *hmod_ADCmax_vs_APV_Ystrips = new TClonesArray("TH2D",nmodules);
+
+  TClonesArray *hmod_ADCsum_vs_APV_Xstrips = new TClonesArray("TH2D",nmodules);
+  TClonesArray *hmod_ADCsum_vs_APV_Ystrips = new TClonesArray("TH2D",nmodules);
 
   for( int imod=0; imod<nmodules; imod++ ){
     TString histname;
@@ -4614,6 +4706,29 @@ void GEM_reconstruct_standalone_consolidated( const char *filename, const char *
     max = nbins-0.5;
 
     new( (*hmod_ADC_vs_Ystrip_good)[imod] ) TH1D( histname.Data(), histtitle.Data(), nbins, min, max );
+
+    histname.Form( "hmod_ADCmax_vs_APV_Xstrips_module%d", imod );
+    nbins = mod_nstripsu[imod]/128;
+
+    new( (*hmod_ADCmax_vs_APV_Xstrips)[imod] ) TH2D( histname.Data(), "Max ADC in max X strip on cluster in good track", nbins, -0.5, nbins+0.5, 512, 0.0, 4096.0 );
+
+    histname.Form( "hmod_ADCmax_vs_APV_Ystrips_module%d", imod );
+    nbins = mod_nstripsv[imod]/128;
+
+    new( (*hmod_ADCmax_vs_APV_Ystrips)[imod] ) TH2D( histname.Data(), "Max ADC in max Y strip on cluster in good track", nbins, -0.5, nbins+0.5, 512, 0.0, 4096.0 );
+
+
+
+    histname.Form( "hmod_ADCsum_vs_APV_Xstrips_module%d", imod );
+    nbins = mod_nstripsu[imod]/128;
+
+    new( (*hmod_ADCsum_vs_APV_Xstrips)[imod] ) TH2D( histname.Data(), "ADC sum in max X strip on cluster in good track", nbins, -0.5, nbins+0.5, 512, 0.0, 1.5e4 );
+
+    histname.Form( "hmod_ADCsum_vs_APV_Ystrips_module%d", imod );
+    nbins = mod_nstripsv[imod]/128;
+
+    new( (*hmod_ADCsum_vs_APV_Ystrips)[imod] ) TH2D( histname.Data(), "ADC sum in max Y strip on cluster in goood track", nbins, -0.5, nbins+0.5, 512, 0.0, 1.5e4 );
+    
     
     
   }
@@ -4764,11 +4879,11 @@ void GEM_reconstruct_standalone_consolidated( const char *filename, const char *
   TH2D *hADCsum_Xstrip_max_module = new TH2D("hADCsum_Xstrip_max_module", "ADC sum on max X strip, cluster in track",500,0.0,1.5e4,nmodules,-0.5,nmodules-0.5);
   TH2D *hADCsum_Ystrip_max_module = new TH2D("hADCsum_Ystrip_max_module", "ADC sum on max Y strip, cluster in track",500,0.0,1.5e4,nmodules,-0.5,nmodules-0.5);
 
-  TH2D *hADCsampmax_Xstrip_module = new TH2D("hADCsampmax_Xstrip_module", "Max ADC sample on max X strip, cluster in track",500,0.0,3000.0,nmodules,-0.5,nmodules-0.5);
-  TH2D *hADCsampmax_Ystrip_module = new TH2D("hADCsampmax_Ystrip_module", "Max ADC sample on max Y strip, cluster in track",500,0.0,3000.0,nmodules,-0.5,nmodules-0.5);
+  TH2D *hADCsampmax_Xstrip_module = new TH2D("hADCsampmax_Xstrip_module", "Max ADC sample on max X strip, cluster in track",512,0.0,4096.0,nmodules,-0.5,nmodules-0.5);
+  TH2D *hADCsampmax_Ystrip_module = new TH2D("hADCsampmax_Ystrip_module", "Max ADC sample on max Y strip, cluster in track",512,0.0,4096.0,nmodules,-0.5,nmodules-0.5);
 
   TH2D *hADCprodXYstrip_max_module = new TH2D("hADCprodXYstrip_max_module", "#sqrt{ADCX*ADCY} sums for max x,y strips",500,0.0,1.5e4,nmodules,-0.5,nmodules-0.5);
-  TH2D *hADCprodXYsamp_max_module = new TH2D("hADCprodXYsamp_max_module", "#sqrt{ADCX*ADCY} max samples, max xy strips",500,0.0,3000.0,nmodules,-0.5,nmodules-0.5);
+  TH2D *hADCprodXYsamp_max_module = new TH2D("hADCprodXYsamp_max_module", "#sqrt{ADCX*ADCY} max samples, max xy strips",512,0.0,4096.0,nmodules,-0.5,nmodules-0.5);
   TH2D *hADCprodXYclust_module = new TH2D("hADCprodXYclust_module", "#sqrt{ADCX*ADCY} cluster sums",500,0.0,5e4,nmodules,-0.5,nmodules-0.5);
   TH2D *hADCsumXclust_module = new TH2D("hADCsumXclust_module","ADCX cluster sum",500,0.0,5e4,nmodules,-0.5,nmodules-0.5);
   TH2D *hADCsumYclust_module = new TH2D("hADCsumYclust_module","ADCY cluster sum",500,0.0,5e4,nmodules,-0.5,nmodules-0.5);
@@ -5854,6 +5969,15 @@ void GEM_reconstruct_standalone_consolidated( const char *filename, const char *
 	      
 	    }
 
+	    int APVx = clusttemp.ixstripmax[clusttemp.ixclust2D[iclust2D]] / 128 ;
+	    int APVy = clusttemp.iystripmax[clusttemp.iyclust2D[iclust2D]] / 128 ;
+
+	    ( (TH2D*) (*hmod_ADCmax_vs_APV_Xstrips)[module] )->Fill( APVx, ModData[module].ADCmax_xstrips[clusttemp.ixstripmax[clusttemp.ixclust2D[iclust2D]]] );
+	    ( (TH2D*) (*hmod_ADCmax_vs_APV_Ystrips)[module] )->Fill( APVy, ModData[module].ADCmax_ystrips[clusttemp.iystripmax[clusttemp.iyclust2D[iclust2D]]] );
+
+	    ( (TH2D*) (*hmod_ADCsum_vs_APV_Xstrips)[module] )->Fill( APVx, ModData[module].ADCsum_xstrips[clusttemp.ixstripmax[clusttemp.ixclust2D[iclust2D]]] );
+	    ( (TH2D*) (*hmod_ADCsum_vs_APV_Ystrips)[module] )->Fill( APVy, ModData[module].ADCsum_ystrips[clusttemp.iystripmax[clusttemp.iyclust2D[iclust2D]]] );
+	    
 	    hclustwidth_x_module->Fill( clusttemp.nstripx2D[iclust2D], module );
 	    hclustwidth_y_module->Fill( clusttemp.nstripy2D[iclust2D], module );
 

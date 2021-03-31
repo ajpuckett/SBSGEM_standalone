@@ -85,5 +85,5 @@ eventdisplay 0
 firstevent 0
 maxneighborsx 5
 maxneighborsy 5
-maxhitcombos 300000
+maxhitcombos 10000
 endconfig
