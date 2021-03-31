@@ -418,6 +418,12 @@ map<int,vector<vector<int> > > layercombos;
 
 
 vector<double> zavg_layer;
+map<int,double> xgmin_layer, xgmax_layer, ygmin_layer, ygmax_layer;
+//map<int,double> xbinwidth_layer,ybinwidth_layer;
+//map<int,int> nbinsx_layer, nbinsy_layer;
+double gridxbinwidth=10.0,gridybinwidth=10.0; //10 mm, eventually user can override
+map<int,int> gridnbinsx_layer, gridnbinsy_layer;
+map<int,double> gridxmin_layer, gridxmax_layer, gridymin_layer, gridymax_layer;
 
 vector<GridHitContainer> gridContainer;
 
@@ -639,69 +645,6 @@ void prune_clusters( clusterdata_t &clusttemp ){
   }
 
   clusttemp.nkeep2D = ngood;
-}
-
-int find_clusters_by_module_newnewnew( moduledata_t mod_data, clusterdata_t &clust_data ){
-  clust_data.Clear();
-  
-  int module = mod_data.modindex;
-  int layer = mod_data.layerindex;
-  
-  int nlocalmaxX=0, nlocalmaxY=0;
-
-  clust_data.nclustx = 0;
-  clust_data.nclusty = 0;
-  clust_data.nclust2D = 0;
-  clust_data.modindex = module;
-  clust_data.layerindex = layer;
-  clust_data.nkeep2D = 0;
-
-  //another option for clustering is to collect all contiguous groups of strips, and then split clusters based into maxima based on prominence:
-  int ngroupsx=0;
-
-  vector<int> group_ixlo,group_ixhi;
-  vector<int> group_npeaksx;
-  vector<int> group_nstripx;
-  vector<vector<double> > group_xstripADC;
-  vector<vector<int> > group_ixpeak; //it will be assumed that this list is ordered by increasing strip
-  vector<vector<double> > group_xpeakADC; 
-
-  int currentgroup = 0;
-  
-  for( set<int>::iterator ix=mod_data.xstrips.begin(); ix != mod_data.xstrips.end(); ++ix ){
-    int strip = *ix;
-
-    //If the previous strip didn't fire, start a new group:
-    if( mod_data.xstrips.find(strip-1) == mod_data.xstrips.end() ){ 
-      group_ixlo.push_back( strip );
-      group_ixhi.push_back( strip );
-      
-      currentgroup = group_ixlo.size();
-      //group_nstripx.push_back( 1 );
-    }
-    //If the next strip didn't fire, end the current group and increment the number of groups:
-    if( mod_data.xstrips.find(strip+1) == mod_data.xstrips.end() ){
-      group_ixhi[currentgroup-1] = strip;
-      
-      //currentgroup++;
-    }
-  }
-
-  ngroupsx = group_ixlo.size();
-  for( int igroup=0; igroup<ngroupsx; igroup++ ){
-    group_nstripx.push_back( group_ixhi[igroup]-group_ixlo[igroup]+1 );
-    vector<double> stripADC;
-    //group_npeaksx.push_back( 0 );
-    for( int istrip = group_ixlo[igroup]; istrip <= group_ixhi[igroup]; istrip++ ){
-      stripADC.push_back( mod_data.ADCsum_xstrips_goodsamp[istrip] );
-    }
-    
-      
-  }
-  
-  
-
-  return 0;
 }
   
 int find_clusters_by_module_newnew( moduledata_t mod_data, clusterdata_t &clust_data ){
@@ -3337,15 +3280,43 @@ void find_tracks( map<int,clusterdata_t> mod_clusters, trackdata_t &trackdata ){
 	map<int,vector<int> > freehitlist_layer; //list of free hits mapped by layer: index in the unchanging arrays defined above:
 	map<int,int> freehitcounter; //counter for looping over combos:
 
+	//GRID:
+	map<int,vector<int> > Nfreehits_binxy_layer;
+	map<int,vector<vector<int> > > freehitlist_binxy_layer;
+	
 	//Populate the "free hit list" information:
 	for(set<int>::iterator ilay=layers_2Dmatch.begin(); ilay!=layers_2Dmatch.end(); ++ilay ){
 	  int layer = *ilay;
 	  Nfreehits_layer[layer] = 0;
+
+	  int nbins_gridxy = gridnbinsx_layer[layer]*gridnbinsy_layer[layer];
+	  
+	  Nfreehits_binxy_layer[layer].resize( nbins_gridxy );
+	  freehitlist_binxy_layer[layer].resize( nbins_gridxy );
+	  for( int bin=0; bin<nbins_gridxy; bin++ ){
+	    Nfreehits_binxy_layer[layer][bin] = 0;
+	    freehitlist_binxy_layer[layer][bin].clear();
+	  }
 	  
 	  for( int ihit=0; ihit<N2Dhits_layer[layer]; ihit++ ){
 	    if( !hitused2D[layer][ihit] ) {
 	      Nfreehits_layer[layer]++;
 	      freehitlist_layer[layer].push_back( ihit );
+
+	      double xgtemp = mod_clusters[modindexhit2D[layer][ihit]].xglobal2D[clustindexhit2D[layer][ihit]];
+	      double ygtemp = mod_clusters[modindexhit2D[layer][ihit]].yglobal2D[clustindexhit2D[layer][ihit]];
+
+	      int binxtemp = int( (xgtemp - gridxmin_layer[layer])/gridxbinwidth );
+	      int binytemp = int( (ygtemp - gridymin_layer[layer])/gridybinwidth );
+
+	      if( binxtemp >= 0 && binxtemp < gridnbinsx_layer[layer] &&
+		  binytemp >= 0 && binytemp < gridnbinsy_layer[layer] ){
+		int binxytemp = binxtemp + gridnbinsx_layer[layer]*binytemp;
+
+		Nfreehits_binxy_layer[layer][binxytemp]++;
+		freehitlist_binxy_layer[layer][binxytemp].push_back( ihit );
+		
+	      }
 	    }
 	  }
  
@@ -4471,7 +4442,7 @@ void GEM_reconstruct_standalone_consolidated( const char *filename, const char *
   Tout->Branch("HitNstripY",HitNstripY,"HitNstripY[TrackNhits]/I");
 
   double xgmin_all=1e9, xgmax_all=-1e9, ygmin_all=1e9, ygmax_all=-1e9;
-  map<int,double> xgmin_layer, xgmax_layer, ygmin_layer, ygmax_layer;
+  //  map<int,double> xgmin_layer, xgmax_layer, ygmin_layer, ygmax_layer;
 
   //compute upper and lower limits for global X, Y coordinates within each layer for purposes of histogram definitions for output and event display:
   for( int imodule=0; imodule<nmodules; imodule++ ){
@@ -4502,6 +4473,35 @@ void GEM_reconstruct_standalone_consolidated( const char *filename, const char *
 
     //Set default value in case the user hasn't defined something:
     if( mod_RYX.find( imodule ) == mod_RYX.end() ) mod_RYX[imodule] = 1.0;
+  }
+
+  //calculate also grid for tracking speed improvement:
+  for( int layer=0; layer<nlayers; layer++ ){
+    double xstart = xgmin_layer[layer]-gridxbinwidth;
+    int nbinsx=0;
+    //double xstop = xstart + nbinsx*gridxbinwidth;
+    while( xstart + nbinsx*gridxbinwidth <= xgmax_layer[layer]+gridxbinwidth ){ 
+      nbinsx++;
+    }
+
+    double xstop = xstart + nbinsx*gridxbinwidth;
+
+    gridnbinsx_layer[layer] = nbinsx;
+    gridxmin_layer[layer] = xstart;
+    gridxmax_layer[layer] = xstop;
+    
+    double ystart = ygmin_layer[layer]-gridybinwidth;
+    int nbinsy=0;
+    while( ystart + nbinsy*gridybinwidth <= ygmax_layer[layer]+gridybinwidth ){
+      nbinsy++;
+    }
+
+    double ystop = ystart + nbinsy*gridybinwidth;
+
+    gridnbinsy_layer[layer] = nbinsy;
+    gridymin_layer[layer] = ystart;
+    gridymax_layer[layer] = ystop;
+    
   }
   
   //Is the size of this canvas biased against people with low-resolution monitors? Probably yes.
