@@ -51,7 +51,7 @@ mod_Ly 512.0 512.0 512.0 512.0 512.0
 mod_uangle 0.0 0.0 0.0 0.0 0.0 
 # Setting the "V" strip angle to -90 degrees amounts to reversing the direction of the Y axis (I hope):
 mod_vangle -90.0 -90.0 -90.0 -90.0 -90.0
-mod_RYX           1.02485        1.0165      0.993901      0.990947      0.981436 
+#mod_RYX           1.02485        1.0165      0.993901      0.990947      0.981436 
 eventdisplay 0
 clustersigma 0.4
 clustertau 54.0
@@ -63,7 +63,7 @@ maxstripsperclusterY 9
 maxcor_threshold  -1.1
 stripcor_threshold  -1.1
 clustcor_threshold -1.1
-clust2D_ADCasymcut 0.3 
+clust2D_ADCasymcut 0.5 
 clust2D_dTcut 30.0
 threshold_maxsample 50.0
 threshold_stripsum 250.0

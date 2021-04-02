@@ -10,8 +10,9 @@
 #include <iostream>
 #include <fstream> 
 #include "TROOT.h"
+#include "TClonesArray.h"
 
-void GainRatios( const char *infilename, int nmodules, double chi2cut=100.0, double ADCcut = 1500.0 ){
+void GainRatios( const char *infilename, int nmodules, double chi2cut=100.0, double ADCcut = 1500.0, int nstripxmax=1536, int nstripymax=1280 ){
   gROOT->ProcessLine(".x ~/rootlogon.C");
 
   TString fname(infilename);
@@ -23,10 +24,33 @@ void GainRatios( const char *infilename, int nmodules, double chi2cut=100.0, dou
   TString outfilename = fname;
 
   outfilename.Prepend("GainRatios_");
+
+  TFile *fout = new TFile( outfilename.Data(), "RECREATE" );
+  
   outfilename.ReplaceAll(".root",".txt");
 
   ofstream outfile(outfilename.Data());
 
+  int nAPVmaxX = nstripxmax/128;
+  if( nstripxmax % 128 > 0 ) nAPVmaxX++;
+
+  int nAPVmaxY = nstripymax/128;
+  if( nstripymax % 128 > 0 ) nAPVmaxY++;
+  
+  TClonesArray *hADCasym_vs_APVXY = new TClonesArray( "TH1D", nAPVmaxX*nAPVmaxY*nmodules );
+
+  for( int imodule=0; imodule<nmodules; imodule++ ){
+    for( int iAPVx = 0; iAPVx < nAPVmaxX; iAPVx++ ){
+      for( int iAPVy = 0; iAPVy < nAPVmaxY; iAPVy++ ){
+	
+	TString hname;
+	hname.Form("hADCasym_vs_APV_mod%d_x%d_y%d",imodule,iAPVx,iAPVy);
+	
+	new( (*hADCasym_vs_APVXY)[iAPVy+nAPVmaxY*iAPVx+nAPVmaxX*nAPVmaxY*imodule] ) TH1D( hname.Data(), "", 250,-1.01,1.01);
+      }
+    }
+  }
+  
   GEM_cosmic_tracks *T = new GEM_cosmic_tracks(C);
 
   long nevent=0;
@@ -34,6 +58,8 @@ void GainRatios( const char *infilename, int nmodules, double chi2cut=100.0, dou
   TH2D *hADCasym_module = new TH2D("hADCasym_module","",nmodules,-0.5,nmodules-0.5,500,-1.01,1.01);
   TH2D *hNstripX_module = new TH2D("hNstripX_module","",nmodules,-0.5,nmodules-0.5,12,0.5,12.5);
   TH2D *hNstripY_module = new TH2D("hNstripY_module","",nmodules,-0.5,nmodules-0.5,12,0.5,12.5);
+
+  //int nAPVmax = 
   
   while( C->GetEntry( nevent++ ) ){
     //loop over hits:
@@ -44,6 +70,31 @@ void GainRatios( const char *infilename, int nmodules, double chi2cut=100.0, dou
 	  hNstripX_module->Fill( T->HitModule[ihit], T->HitNstripX[ihit] );
 	  hNstripY_module->Fill( T->HitModule[ihit], T->HitNstripY[ihit] );
 	}
+
+	int ixlo = T->HitXstripLo[ihit];
+	int ixhi = T->HitXstripHi[ihit];
+	int ixmax = T->HitXstripMax[ihit];
+
+	int iylo = T->HitYstripLo[ihit];
+	int iyhi = T->HitYstripHi[ihit];
+	int iymax = T->HitYstripMax[ihit];
+
+	int xAPVmax = ixmax/128;
+	int yAPVmax = iymax/128;
+	int xAPVlo = ixlo/128;
+	int yAPVlo = iylo/128;
+
+	int xAPVhi = ixhi/128;
+	int yAPVhi = iyhi/128;
+
+	if( xAPVlo == xAPVmax && xAPVhi == xAPVmax &&
+	    yAPVlo == yAPVmax && yAPVhi == yAPVmax &&
+	    T->HitNstripX[ihit] >= 2 && T->HitNstripY[ihit] >= 2 ){
+
+	  ( (TH1D*) (*hADCasym_vs_APVXY)[yAPVmax + nAPVmaxY*xAPVmax+nAPVmaxX*nAPVmaxY*T->HitModule[ihit]] )->Fill( T->HitADCasym[ihit] );
+	  
+	}
+	
       }
     }
   }
@@ -100,6 +151,6 @@ void GainRatios( const char *infilename, int nmodules, double chi2cut=100.0, dou
 
   outfile << endl;
 
-  
+  fout->Write();
 
 }

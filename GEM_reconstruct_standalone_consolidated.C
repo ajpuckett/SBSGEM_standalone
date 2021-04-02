@@ -483,6 +483,11 @@ map<int,double> mod_clustcorthreshold; //XY correlation coefficient of cluster-s
 map<int,double> mod_ADCasymcut; //ADC asymmetry cut for cluster X and Y sums
 map<int,double> mod_dTcut;      //tmeanx - tmeany cut for cluster summed ADC-weighted cluster mean times
 
+map<int,int> mod_nAPVX;
+map<int,int> mod_nAPVY;
+map<int,vector<double> > mod_Xgain;
+map<int,vector<double> > mod_Ygain;
+
 //Also useful to define number of modules per layer and list of modules by layer:
 map<int,int> nmodules_layer;
 map<int,set<int> > modlist_layer;
@@ -4069,6 +4074,52 @@ void GEM_reconstruct_standalone_consolidated( const char *filename, const char *
 	if( ntokens >= 2 ){
 	  TString skey = ( (TObjString*) (*tokens)[0] )->GetString();
 
+	  if( skey == "mod_Xgain" && ntokens >= 3 ){
+	    TString smod = ( (TObjString*) (*tokens)[1] )->GetString();
+
+	    int module = smod.Atoi();
+
+	    TString snAPVs = ( (TObjString*) (*tokens)[2] )->GetString();
+
+	    int nAPVs = snAPVs.Atoi();
+
+	    if( ntokens - 3 >= nAPVs ){ //read in gain coefficients:
+	      for( int iAPV=0; iAPV<nAPVs; iAPV++ ){
+		TString sgain = ( (TObjString*) (*tokens)[iAPV+3] )->GetString();
+
+		mod_Xgain[module].push_back(sgain.Atof());
+	      }
+	    }
+	  }
+
+	  if( skey == "mod_Ygain" && ntokens >= 3 ){
+	    TString smod = ( (TObjString*) (*tokens)[1] )->GetString();
+
+	    int module = smod.Atoi();
+
+	    TString snAPVs = ( (TObjString*) (*tokens)[2] )->GetString();
+
+	    int nAPVs = snAPVs.Atoi();
+
+	    if( ntokens - 3 >= nAPVs ){ //read in gain coefficients:
+	      for( int iAPV=0; iAPV<nAPVs; iAPV++ ){
+		TString sgain = ( (TObjString*) (*tokens)[iAPV+3] )->GetString();
+
+		mod_Ygain[module].push_back(sgain.Atof());
+	      }
+	    }
+	  }
+	  
+	  if( skey == "gridxbinwidth" ){
+	    TString stemp = ( (TObjString*) (*tokens)[1] )->GetString();
+	    gridxbinwidth = skey.Atof();
+	  }
+
+	  if( skey == "gridybinwidth" ){
+	    TString stemp = ( (TObjString*) (*tokens)[1] )->GetString();
+	    gridybinwidth = skey.Atof();
+	  }
+	  
 	  if( skey == "firstevent" ){
 	    TString stemp = ( (TObjString*) (*tokens)[1] )->GetString();
 	    firstevent = stemp.Atoi();
@@ -4489,6 +4540,10 @@ void GEM_reconstruct_standalone_consolidated( const char *filename, const char *
     nmodules_layer[ilayer] = 0;
     modlist_layer[ilayer].clear();
   }
+
+
+  //Check if module gain has been initialized: 
+  
   for( int imod=0; imod<nmodules; imod++ ){
     int layer = mod_layer[imod];
     nmod_layer[layer]++;
@@ -4499,7 +4554,39 @@ void GEM_reconstruct_standalone_consolidated( const char *filename, const char *
 
     nmodules_layer[layer]++;
     modlist_layer[layer].insert(imod);
+
+    //The following lines insure that mod_Xgain and mod_Ygain have been properly initialized
+    //if the user has not provided their own values:
     
+    mod_nAPVX[imod] = mod_nstripsu[imod]/128;
+    if( mod_nstripsu[imod]%128 > 0 ) mod_nAPVX[imod]++;
+   
+    mod_nAPVY[imod] = mod_nstripsv[imod]/128;
+    if( mod_nstripsv[imod]%128 > 0 ) mod_nAPVY[imod]++;
+
+    if( mod_Xgain.find(imod) == mod_Xgain.end() ){ //X gain for this module has NOT been initialized: set all to 1
+      for( int i=0; i<mod_nAPVX[imod]; i++ ){
+	mod_Xgain[imod].push_back( 1.0 );
+      }
+    } else {
+      if( mod_Xgain[imod].size() < mod_nAPVX[imod] ){
+	for( int i=0; i<mod_nAPVX[imod] - mod_Xgain[imod].size(); i++ ){
+	  mod_Xgain[imod].push_back( 1.0 );
+	}
+      }
+    }
+
+    if( mod_Ygain.find(imod) == mod_Ygain.end() ){ //X gain for this module has NOT been initialized: set all to 1
+      for( int i=0; i<mod_nAPVY[imod]; i++ ){
+	mod_Ygain[imod].push_back( 1.0 );
+      }
+    } else {
+      if( mod_Ygain[imod].size() < mod_nAPVY[imod] ){
+	for( int i=0; i<mod_nAPVY[imod] - mod_Ygain[imod].size(); i++ ){
+	  mod_Ygain[imod].push_back( 1.0 );
+	}
+      }
+    }
   }
 
   int maxnmodperlayer=-1;
@@ -4577,6 +4664,12 @@ void GEM_reconstruct_standalone_consolidated( const char *filename, const char *
   double StripMaxCorrCoeff[nlayers];
   int HitNstripX[nlayers];
   int HitNstripY[nlayers];
+  int HitXstripMax[nlayers];
+  int HitYstripMax[nlayers];
+  int HitXstripLo[nlayers];
+  int HitYstripLo[nlayers];
+  int HitXstripHi[nlayers];
+  int HitYstripHi[nlayers];
 
   Tout->Branch("EventID",&EventID,"EventID/I");
   Tout->Branch("Ntracks",&Ntracks,"Ntracks/I");
@@ -4615,6 +4708,16 @@ void GEM_reconstruct_standalone_consolidated( const char *filename, const char *
   Tout->Branch("HitNstripX",HitNstripX,"HitNstripX[TrackNhits]/I");
   Tout->Branch("HitNstripY",HitNstripY,"HitNstripY[TrackNhits]/I");
 
+  //Add strip index information for each hit:
+  Tout->Branch("HitXstripMax",HitXstripMax,"HitXstripMax[TrackNhits]/I");
+  Tout->Branch("HitYstripMax",HitYstripMax,"HitYstripMax[TrackNhits]/I");
+
+  Tout->Branch("HitXstripLo",HitXstripLo,"HitXstripLo[TrackNhits]/I");
+  Tout->Branch("HitYstripLo",HitYstripLo,"HitYstripLo[TrackNhits]/I");
+
+  Tout->Branch("HitXstripHi",HitXstripHi,"HitXstripHi[TrackNhits]/I");
+  Tout->Branch("HitYstripHi",HitYstripHi,"HitYstripHi[TrackNhits]/I");
+  
   double xgmin_all=1e9, xgmax_all=-1e9, ygmin_all=1e9, ygmax_all=-1e9;
   //  map<int,double> xgmin_layer, xgmax_layer, ygmin_layer, ygmax_layer;
 
@@ -5541,10 +5644,12 @@ void GEM_reconstruct_standalone_consolidated( const char *filename, const char *
 	double tsamp[nADCsamples];
 	double dsamp[nADCsamples];
 	double dtsamp[nADCsamples];
+
+	int iAPV = strip/128;
 	
 	for( int isamp=0; isamp<nADCsamples; isamp++ ){
 
-	  ADCsamples[isamp] *= mod_RYX[module]; //EXPERIMENTAL: multiply X ADC samples by ratio of Y gain to X gain: everything else proceeds as before:
+	  ADCsamples[isamp] *= mod_RYX[module]*mod_Xgain[module][iAPV]; //EXPERIMENTAL: multiply X ADC samples by ratio of Y gain to X gain: everything else proceeds as before:
 	  
 	  ModData[module].ADCsamp_xstrips[strip][isamp] = ADCsamples[isamp];
 	  ModData[module].ADCsum_xstrips[strip] += ADCsamples[isamp];
@@ -5628,6 +5733,8 @@ void GEM_reconstruct_standalone_consolidated( const char *filename, const char *
       } else if( plane == mod_vplaneID[module] && keepstrip ){ //y (horizontal/short) axis
 	ModData[module].ystrips.insert( strip );
 
+	
+	
 	ModData[module].ADCsum_ystrips[strip] = 0.0;
 	ModData[module].ADCsum_ystrips_goodsamp[strip] = 0.0;
 	ModData[module].ADCsamp_ystrips[strip].resize(nADCsamples);
@@ -5636,8 +5743,13 @@ void GEM_reconstruct_standalone_consolidated( const char *filename, const char *
 	double tsamp[nADCsamples];
 	double dsamp[nADCsamples];
 	double dtsamp[nADCsamples];
+
+	int iAPV = strip/128;
 	
 	for( int isamp=0; isamp<nADCsamples; isamp++ ){
+
+	  ADCsamples[isamp] *= mod_Ygain[module][iAPV];
+	  
 	  ModData[module].ADCsamp_ystrips[strip][isamp] = ADCsamples[isamp];
 	  ModData[module].ADCsum_ystrips[strip] += ADCsamples[isamp];
 
@@ -6346,6 +6458,15 @@ void GEM_reconstruct_standalone_consolidated( const char *filename, const char *
 	      HitNstripX[ihit] = clusttemp.nstripx2D[iclust2D];
 	      HitNstripY[ihit] = clusttemp.nstripy2D[iclust2D];
 
+	      HitXstripMax[ihit] = clusttemp.ixstripmax[clusttemp.ixclust2D[iclust2D]];
+	      HitYstripMax[ihit] = clusttemp.iystripmax[clusttemp.iyclust2D[iclust2D]];
+
+	      HitXstripLo[ihit] = clusttemp.ixstriplo[clusttemp.ixclust2D[iclust2D]];
+	      HitYstripLo[ihit] = clusttemp.iystriplo[clusttemp.iyclust2D[iclust2D]];
+
+	      HitXstripHi[ihit] = clusttemp.ixstriphi[clusttemp.ixclust2D[iclust2D]];
+	      HitYstripHi[ihit] = clusttemp.iystriphi[clusttemp.iyclust2D[iclust2D]];
+	      
 	      hClust2D_Xmom_vs_NstripX->Fill( HitNstripX[ihit], HitXmom[ihit] );
 	      hClust2D_Ymom_vs_NstripY->Fill( HitNstripY[ihit], HitYmom[ihit] );
 

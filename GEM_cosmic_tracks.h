@@ -1,8 +1,8 @@
 //////////////////////////////////////////////////////////
 // This class has been automatically generated on
-// Tue Nov 12 12:10:00 2019 by ROOT version 6.18/00
+// Fri Apr  2 12:36:52 2021 by ROOT version 6.22/08
 // from TTree Tout/INFN GEM 4-layer cosmic tracks
-// found on file: temp.root
+// found on file: temp3805_allevents.root
 //////////////////////////////////////////////////////////
 
 #ifndef GEM_cosmic_tracks_h
@@ -22,7 +22,10 @@ public :
 // Fixed size dimensions of array or collections stored in the TTree if any.
 
    // Declaration of leaf types
+   Int_t           EventID;
    Int_t           Ntracks;
+   Double_t        CALOsum;
+   Int_t           NGOODSCINT;
    Double_t        TrackXp;
    Double_t        TrackYp;
    Double_t        TrackX;
@@ -30,30 +33,43 @@ public :
    Double_t        TrackChi2NDF;
    Int_t           TrackNhits;
    Int_t           Nlayers;
-   Int_t           Ncluster[100];   //[Nlayers]
-   Int_t           HitModule[100];   //[TrackNhits]
-   Int_t           HitLayer[100];   //[TrackNhits]
-   Double_t        HitXlocal[100];   //[TrackNhits]
-   Double_t        HitYlocal[100];   //[TrackNhits]
-   Double_t        HitXglobal[100];   //[TrackNhits]
-   Double_t        HitYglobal[100];   //[TrackNhits]
-   Double_t        HitZglobal[100];   //[TrackNhits]
-   Double_t        HitXresid[100];   //[TrackNhits]
-   Double_t        HitYresid[100];   //[TrackNhits]
-   Double_t        HitSigX[100];   //[TrackNhits]
-   Double_t        HitSigY[100];   //[TrackNhits]
-   Double_t        HitADCX[100];   //[TrackNhits]
-   Double_t        HitADCY[100];   //[TrackNhits]
-   Double_t        HitADCasym[100];   //[TrackNhits]
-   Double_t        HitTmean[100];   //[TrackNhits]
-   Double_t        HitdT[100];   //[TrackNhits]
-   Double_t        HitCorrCoeff[100];   //[TrackNhits]
-   Double_t        StripMaxCorrCoeff[100];   //[TrackNhits]
-   Int_t           HitNstripX[100];   //[TrackNhits]
-   Int_t           HitNstripY[100];   //[TrackNhits]
+   Int_t           Ncluster[4];   //[Nlayers]
+   Int_t           HitModule[4];   //[TrackNhits]
+   Int_t           HitLayer[4];   //[TrackNhits]
+   Double_t        HitXlocal[4];   //[TrackNhits]
+   Double_t        HitYlocal[4];   //[TrackNhits]
+   Double_t        HitXglobal[4];   //[TrackNhits]
+   Double_t        HitYglobal[4];   //[TrackNhits]
+   Double_t        HitZglobal[4];   //[TrackNhits]
+   Double_t        HitXresid[4];   //[TrackNhits]
+   Double_t        HitYresid[4];   //[TrackNhits]
+   Double_t        HitXresidE[4];   //[TrackNhits]
+   Double_t        HitYresidE[4];   //[TrackNhits]
+   Double_t        HitSigX[4];   //[TrackNhits]
+   Double_t        HitSigY[4];   //[TrackNhits]
+   Double_t        HitXmom[4];   //[TrackNhits]
+   Double_t        HitYmom[4];   //[TrackNhits]
+   Double_t        HitADCX[4];   //[TrackNhits]
+   Double_t        HitADCY[4];   //[TrackNhits]
+   Double_t        HitADCasym[4];   //[TrackNhits]
+   Double_t        HitTmean[4];   //[TrackNhits]
+   Double_t        HitdT[4];   //[TrackNhits]
+   Double_t        HitCorrCoeff[4];   //[TrackNhits]
+   Double_t        StripMaxCorrCoeff[4];   //[TrackNhits]
+   Int_t           HitNstripX[4];   //[TrackNhits]
+   Int_t           HitNstripY[4];   //[TrackNhits]
+   Int_t           HitXstripMax[4];   //[TrackNhits]
+   Int_t           HitYstripMax[4];   //[TrackNhits]
+   Int_t           HitXstripLo[4];   //[TrackNhits]
+   Int_t           HitYstripLo[4];   //[TrackNhits]
+   Int_t           HitXstripHi[4];   //[TrackNhits]
+   Int_t           HitYstripHi[4];   //[TrackNhits]
 
    // List of branches
+   TBranch        *b_EventID;   //!
    TBranch        *b_Ntracks;   //!
+   TBranch        *b_CALOsum;   //!
+   TBranch        *b_NGOODSCINT;   //!
    TBranch        *b_TrackXp;   //!
    TBranch        *b_TrackYp;   //!
    TBranch        *b_TrackX;   //!
@@ -71,8 +87,12 @@ public :
    TBranch        *b_HitZglobal;   //!
    TBranch        *b_HitXresid;   //!
    TBranch        *b_HitYresid;   //!
+   TBranch        *b_HitXresidE;   //!
+   TBranch        *b_HitYresidE;   //!
    TBranch        *b_HitSigX;   //!
    TBranch        *b_HitSigY;   //!
+   TBranch        *b_HitXmom;   //!
+   TBranch        *b_HitYmom;   //!
    TBranch        *b_HitADCX;   //!
    TBranch        *b_HitADCY;   //!
    TBranch        *b_HitADCasym;   //!
@@ -82,6 +102,12 @@ public :
    TBranch        *b_StripMaxCorrCoeff;   //!
    TBranch        *b_HitNstripX;   //!
    TBranch        *b_HitNstripY;   //!
+   TBranch        *b_HitXstripMax;   //!
+   TBranch        *b_HitYstripMax;   //!
+   TBranch        *b_HitXstripLo;   //!
+   TBranch        *b_HitYstripLo;   //!
+   TBranch        *b_HitXstripHi;   //!
+   TBranch        *b_HitYstripHi;   //!
 
    GEM_cosmic_tracks(TTree *tree=0);
    virtual ~GEM_cosmic_tracks();
@@ -102,9 +128,9 @@ GEM_cosmic_tracks::GEM_cosmic_tracks(TTree *tree) : fChain(0)
 // if parameter tree is not specified (or zero), connect the file
 // used to generate this class and read the Tree.
    if (tree == 0) {
-      TFile *f = (TFile*)gROOT->GetListOfFiles()->FindObject("temp.root");
+      TFile *f = (TFile*)gROOT->GetListOfFiles()->FindObject("temp3805_allevents.root");
       if (!f || !f->IsOpen()) {
-         f = new TFile("temp.root");
+         f = new TFile("temp3805_allevents.root");
       }
       f->GetObject("Tout",tree);
 
@@ -153,7 +179,10 @@ void GEM_cosmic_tracks::Init(TTree *tree)
    fCurrent = -1;
    fChain->SetMakeClass(1);
 
+   fChain->SetBranchAddress("EventID", &EventID, &b_EventID);
    fChain->SetBranchAddress("Ntracks", &Ntracks, &b_Ntracks);
+   fChain->SetBranchAddress("CALOsum", &CALOsum, &b_CALOsum);
+   fChain->SetBranchAddress("NGOODSCINT", &NGOODSCINT, &b_NGOODSCINT);
    fChain->SetBranchAddress("TrackXp", &TrackXp, &b_TrackXp);
    fChain->SetBranchAddress("TrackYp", &TrackYp, &b_TrackYp);
    fChain->SetBranchAddress("TrackX", &TrackX, &b_TrackX);
@@ -171,8 +200,12 @@ void GEM_cosmic_tracks::Init(TTree *tree)
    fChain->SetBranchAddress("HitZglobal", HitZglobal, &b_HitZglobal);
    fChain->SetBranchAddress("HitXresid", HitXresid, &b_HitXresid);
    fChain->SetBranchAddress("HitYresid", HitYresid, &b_HitYresid);
+   fChain->SetBranchAddress("HitXresidE", HitXresidE, &b_HitXresidE);
+   fChain->SetBranchAddress("HitYresidE", HitYresidE, &b_HitYresidE);
    fChain->SetBranchAddress("HitSigX", HitSigX, &b_HitSigX);
    fChain->SetBranchAddress("HitSigY", HitSigY, &b_HitSigY);
+   fChain->SetBranchAddress("HitXmom", HitXmom, &b_HitXmom);
+   fChain->SetBranchAddress("HitYmom", HitYmom, &b_HitYmom);
    fChain->SetBranchAddress("HitADCX", HitADCX, &b_HitADCX);
    fChain->SetBranchAddress("HitADCY", HitADCY, &b_HitADCY);
    fChain->SetBranchAddress("HitADCasym", HitADCasym, &b_HitADCasym);
@@ -182,6 +215,12 @@ void GEM_cosmic_tracks::Init(TTree *tree)
    fChain->SetBranchAddress("StripMaxCorrCoeff", StripMaxCorrCoeff, &b_StripMaxCorrCoeff);
    fChain->SetBranchAddress("HitNstripX", HitNstripX, &b_HitNstripX);
    fChain->SetBranchAddress("HitNstripY", HitNstripY, &b_HitNstripY);
+   fChain->SetBranchAddress("HitXstripMax", HitXstripMax, &b_HitXstripMax);
+   fChain->SetBranchAddress("HitYstripMax", HitYstripMax, &b_HitYstripMax);
+   fChain->SetBranchAddress("HitXstripLo", HitXstripLo, &b_HitXstripLo);
+   fChain->SetBranchAddress("HitYstripLo", HitYstripLo, &b_HitYstripLo);
+   fChain->SetBranchAddress("HitXstripHi", HitXstripHi, &b_HitXstripHi);
+   fChain->SetBranchAddress("HitYstripHi", HitYstripHi, &b_HitYstripHi);
    Notify();
 }
 
