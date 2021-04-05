@@ -11,6 +11,8 @@
 #include <fstream> 
 #include "TROOT.h"
 #include "TClonesArray.h"
+#include "TVectorD.h"
+#include "TMatrixD.h"
 
 void GainRatios( const char *infilename, int nmodules, double chi2cut=100.0, double ADCcut = 1500.0, int nstripxmax=1536, int nstripymax=1280 ){
   gROOT->ProcessLine(".x ~/rootlogon.C");
