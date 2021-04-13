@@ -51,7 +51,19 @@ mod_Ly 512.0 512.0 512.0 512.0 512.0
 mod_uangle 0.0 0.0 0.0 0.0 0.0 
 # Setting the "V" strip angle to -90 degrees amounts to reversing the direction of the Y axis (I hope):
 mod_vangle -90.0 -90.0 -90.0 -90.0 -90.0
-#mod_RYX           1.02485        1.0165      0.993901      0.990947      0.981436 
+#mod_RYX           1.02485        1.0165      0.993901      0.990947      0.981436
+#
+mod_Ygain  0   10     1.09807  1.0842  1.02606  1.03889  0.885403  0.952752  1.04485  1.01169  1.0698  1.06016  
+mod_Xgain  0   12     0.537785  0.716887  0.837506  0.988094  0.988824  0.967867  0.938075  0.932093  1.05534  1.11343  0.945456  1.0372  
+mod_Ygain  1   10     0.972019  0.999791  1.08416  1.13007  1.09457  1.06369  0.832842  0.912566  0.947521  1.03307  
+mod_Xgain  1   12     0.895591  0.844303  0.997  0.984471  1.01503  0.985207  1.0342  1.0452  1.03334  1.00542  0.928699  1.03731  
+mod_Ygain  2   10     0.99998  0.972369  1.10052  0.989547  1.02489  1.04828  1.04345  0.966484  0.983684  0.919026  
+mod_Xgain  2   12     1.10003  1.08983  1.09605  0.964309  0.946679  0.99533  0.968944  1.05775  1.06634  0.996704  0.971867  1.02243  
+mod_Ygain  3   10     1.02565  1.01417  1.06368  1.0185  0.926741  0.906699  0.995387  1.01712  0.963223  0.983414  
+mod_Xgain  3   12     0.476206  0.648782  0.782445  0.852971  1.00557  0.94646  1.02378  1.06532  1.00016  0.974578  1.07574  0.932121  
+mod_Ygain  4   10     1.07915  1.0516  1.01472  0.917397  0.932559  0.903164  0.815552  0.84601  1.02239  1.08284  
+mod_Xgain  4   12     0.903564  0.896063  0.937998  0.931877  0.979028  0.876293  1.0061  1.00938  1.03846  1.08627  1.1137  1.20208  
+#
 eventdisplay 0
 clustersigma 0.4
 clustertau 54.0
@@ -63,7 +75,7 @@ maxstripsperclusterY 9
 maxcor_threshold  -1.1
 stripcor_threshold  -1.1
 clustcor_threshold -1.1
-clust2D_ADCasymcut 0.5 
+clust2D_ADCasymcut 1.1 
 clust2D_dTcut 30.0
 threshold_maxsample 50.0
 threshold_stripsum 250.0
@@ -78,11 +90,11 @@ trackmaxslopeY 1.0
 #maxADCXYthreshold 1000.0
 tstripcut_nsigma 5.0
 #NMAX 100000000
-NMAX 2000000
+NMAX 20000
 #clustmap_fname HallA_allevents_with_moments.root
 TrackingAlgorithm 2
-eventdisplay 0
-firstevent 0
+eventdisplay 1
+firstevent 125234
 maxneighborsx 5
 maxneighborsy 5
 maxhitcombos 10000

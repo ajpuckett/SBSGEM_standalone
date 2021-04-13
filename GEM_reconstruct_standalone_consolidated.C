@@ -5214,7 +5214,7 @@ void GEM_reconstruct_standalone_consolidated( const char *filename, const char *
   TH2D *hTrackXeresid_vs_module = new TH2D("hTrackXeresid_vs_module", "Track X eresiduals by module",nmodules,-0.5,nmodules-0.5,200,-maxresid,maxresid);
   TH2D *hTrackYeresid_vs_module = new TH2D("hTrackYeresid_vs_module", "Track Y eresiduals by module",nmodules,-0.5,nmodules-0.5,200,-maxresid,maxresid);
   
-  TH2D *hTrackXY = new TH2D("hTrackXY","Track X fit vs Y fit",1000,ygmin_all-25.0, ygmax_all+25.0, 1000, xgmin_all-25.0, xgmax_all+25.0);
+  TH2D *hTrackXY = new TH2D("hTrackXY","Track X fit vs Y fit",250,ygmin_all-25.0, ygmax_all+25.0, 250, xgmin_all-25.0, xgmax_all+25.0);
   TH1D *hTrackXp = new TH1D("hTrackXp","Track dx/dz fit", 1000,-1.0,1.0);
   TH1D *hTrackYp = new TH1D("hTrackYp","Track dy/dz fit", 1000,-1.0,1.0);
 
@@ -5263,7 +5263,7 @@ void GEM_reconstruct_standalone_consolidated( const char *filename, const char *
     double nbinsy_eff,nbinsx_eff;
 
 
-    int nbinsaxis_hitmap = 250;
+    int nbinsaxis_hitmap = 100;
     int nbinsx_hitmap,nbinsy_hitmap;
    
     //These formulas give:
@@ -5394,7 +5394,7 @@ void GEM_reconstruct_standalone_consolidated( const char *filename, const char *
     mod_Rot[imodule] = Rtemp;
     mod_Rotinv[imodule] = Rtemp.Inverse();
 
-    int nbinsaxis_hitmap = 250;
+    int nbinsaxis_hitmap = 100;
     int nbinsy_hitmap,nbinsx_hitmap;
     
     if( mod_Lx[imodule] > mod_Ly[imodule] ){
@@ -5649,7 +5649,7 @@ void GEM_reconstruct_standalone_consolidated( const char *filename, const char *
 	
 	for( int isamp=0; isamp<nADCsamples; isamp++ ){
 
-	  ADCsamples[isamp] *= mod_RYX[module]*mod_Xgain[module][iAPV]; //EXPERIMENTAL: multiply X ADC samples by ratio of Y gain to X gain: everything else proceeds as before:
+	  ADCsamples[isamp] *= mod_RYX[module]/mod_Xgain[module][iAPV]; //EXPERIMENTAL: multiply X ADC samples by ratio of Y gain to X gain: everything else proceeds as before:
 	  
 	  ModData[module].ADCsamp_xstrips[strip][isamp] = ADCsamples[isamp];
 	  ModData[module].ADCsum_xstrips[strip] += ADCsamples[isamp];
@@ -5748,7 +5748,7 @@ void GEM_reconstruct_standalone_consolidated( const char *filename, const char *
 	
 	for( int isamp=0; isamp<nADCsamples; isamp++ ){
 
-	  ADCsamples[isamp] *= mod_Ygain[module][iAPV];
+	  ADCsamples[isamp] /= mod_Ygain[module][iAPV];
 	  
 	  ModData[module].ADCsamp_ystrips[strip][isamp] = ADCsamples[isamp];
 	  ModData[module].ADCsum_ystrips[strip] += ADCsamples[isamp];
