@@ -18,26 +18,67 @@
 
 vector<double> AsymALL, dAsymALL;
 vector<int> APVX_asymALL, APVY_asymALL;
+vector<vector<double> > weightX, weightY;
+
+vector<int> countX,countY;
 
 int nAPVmaxX = 12;
 int nAPVmaxY = 10;
 
 void chi2_FCN( int &npar, double *gin, double &f, double *par, int flag ){
 
+  //cout << "calculating chi2..." << endl;
+  
   double chi2 = 0.0;
   for( int i=0; i<AsymALL.size(); i++ ){
     int iy = APVY_asymALL[i];
     int ix = APVX_asymALL[i];
 
-    double Gx = par[ix + nAPVmaxY];
-    double Gy = par[iy];
+    bool useasym = false;
+    
+    double Gx=1.0, Gy=1.0;
+    
+    if( iy >= 0 && iy < nAPVmaxY && ix >= 0 && ix < nAPVmaxX ){
+      Gx = par[ix + nAPVmaxY];
+      Gy = par[iy];
 
+      useasym = true;
+    } else if( iy >= 0 && iy < nAPVmaxY ){ //using weighted average over all X APVs for Gx:
+      double sum_Gx = 0.0;
+      double sum_Wx = 0.0;
+      for( int j = 0; j<nAPVmaxX; j++ ){
+	sum_Gx += weightX[iy][j] * par[j+nAPVmaxY];
+	sum_Wx += weightX[iy][j];
+      }
+
+      Gx = sum_Gx/sum_Wx;
+      Gy = par[iy];
+
+      if( countX[iy] == 0 ) useasym = true;
+      
+    } else if( ix >= 0 && ix < nAPVmaxX ){ //using weighted average over all Y APVs for Gy:
+      double sum_Gy = 0.0;
+      double sum_Wy = 0.0;
+      for( int j=0; j<nAPVmaxY; j++ ){
+	sum_Gy += weightY[ix][j] * par[j];
+	sum_Wy += weightY[ix][j];
+      }
+
+      Gx = par[ix+nAPVmaxY];
+      Gy = sum_Gy/sum_Wy;
+
+      if( countY[ix] == 0 ) useasym = true;
+	
+    }
+      
     double Atheory = (Gx - Gy)/(Gx + Gy);
 
-    chi2 += pow( (AsymALL[i] - Atheory)/dAsymALL[i], 2 );
+    if( useasym ) chi2 += pow( (AsymALL[i] - Atheory)/dAsymALL[i], 2 );
     
   }
 
+  //cout << "chi2 = " << chi2 << endl;
+  
   f = chi2;
 }
 
@@ -263,14 +304,134 @@ void GainRatios( const char *infilename, int nmodules, double chi2cut=100.0, dou
     }
     AsymALL.clear();
     dAsymALL.clear();
+
+    APVX_asymALL.clear();
+    APVY_asymALL.clear();
     
+    weightX.clear();
+    weightY.clear();
+
+    weightX.resize(nAPVmaxY);
+    weightY.resize(nAPVmaxX);
     //Shall we just create a separate TMinuit object for each module? Why TF not?
+
+    countX.resize(nAPVmaxY);
+    countY.resize(nAPVmaxX); 
+    
+    //Card-average asymmetries:
+    for( int ix=0; ix<nAPVmaxX; ix++ ){
+      weightY[ix].resize(nAPVmaxY);
+
+      countY[ix] = 0;
+      
+      TH1D *htemp = ( (TH1D*) (*hADCasym_vs_APVX)[ix+nAPVmaxX*i] );
+      if( htemp->GetEntries() >= 100 ){
+	double Amean = htemp->GetMean();
+	double dAmean = htemp->GetMeanError();
+
+	double Arms = htemp->GetRMS();
+	double dArms = htemp->GetRMSError();
+
+	htemp->Fit("gaus","SQ","",Amean-Arms, Amean+Arms);
+	 
+	double Amean_fit = htemp->GetFunction("gaus")->GetParameter("Mean");
+	double dAmean_fit = htemp->GetFunction("gaus")->GetParError(1);
+
+	double Arms_fit = htemp->GetFunction("gaus")->GetParameter("Sigma");
+	double dArms_fit = htemp->GetFunction("gaus")->GetParError(2);
+
+	//re-run the fit with a tighter range set by the result of the first fit:
+
+	htemp->Fit( "gaus", "SQ", "", Amean_fit - 2.0*Arms_fit, Amean_fit + 2.0*Arms_fit );
+
+	Amean_fit = htemp->GetFunction("gaus")->GetParameter("Mean");
+	dAmean_fit = htemp->GetFunction("gaus")->GetParError(1);
+	  
+	Arms_fit = htemp->GetFunction("gaus")->GetParameter("Sigma");
+	dArms_fit = htemp->GetFunction("gaus")->GetParError(2);
+
+	double Ryxtemp = (1.0-Amean_fit)/(1.0+Amean_fit);
+
+	double Aup = Amean_fit + dAmean_fit;
+	double Adown = Amean_fit - dAmean_fit;
+	  
+	double Ryx_Aup = (1.0 - Aup)/(1.0 + Aup );
+	double Ryx_Adown = (1.0 - Adown)/(1.0 + Adown);
+
+	AsymALL.push_back( Amean_fit );
+	dAsymALL.push_back( dAmean_fit );
+
+	APVX_asymALL.push_back( ix );
+	APVY_asymALL.push_back( -1 );
+      } else { //If less than 100 entries for this entire APV, fix the gain to 1:
+	gainfit->FixParameter( ix + nAPVmaxY );
+      }
+    }
+
+    for( int iy=0; iy<nAPVmaxY; iy++ ){
+      weightX[iy].resize( nAPVmaxX );
+
+      countX[iy] = 0;
+      
+      TH1D *htemp = ( (TH1D*) (*hADCasym_vs_APVY)[iy+nAPVmaxY*i] );
+      if( htemp->GetEntries() >= 100 ){
+	double Amean = htemp->GetMean();
+	double dAmean = htemp->GetMeanError();
+
+	double Arms = htemp->GetRMS();
+	double dArms = htemp->GetRMSError();
+
+	htemp->Fit("gaus","SQ","",Amean-Arms, Amean+Arms);
+	 
+	double Amean_fit = htemp->GetFunction("gaus")->GetParameter("Mean");
+	double dAmean_fit = htemp->GetFunction("gaus")->GetParError(1);
+
+	double Arms_fit = htemp->GetFunction("gaus")->GetParameter("Sigma");
+	double dArms_fit = htemp->GetFunction("gaus")->GetParError(2);
+
+	//re-run the fit with a tighter range set by the result of the first fit:
+
+	htemp->Fit( "gaus", "SQ", "", Amean_fit - 2.0*Arms_fit, Amean_fit + 2.0*Arms_fit );
+
+	Amean_fit = htemp->GetFunction("gaus")->GetParameter("Mean");
+	dAmean_fit = htemp->GetFunction("gaus")->GetParError(1);
+	  
+	Arms_fit = htemp->GetFunction("gaus")->GetParameter("Sigma");
+	dArms_fit = htemp->GetFunction("gaus")->GetParError(2);
+
+	double Ryxtemp = (1.0-Amean_fit)/(1.0+Amean_fit);
+
+	double Aup = Amean_fit + dAmean_fit;
+	double Adown = Amean_fit - dAmean_fit;
+	  
+	double Ryx_Aup = (1.0 - Aup)/(1.0 + Aup );
+	double Ryx_Adown = (1.0 - Adown)/(1.0 + Adown);
+
+	AsymALL.push_back( Amean_fit );
+	dAsymALL.push_back( dAmean_fit );
+
+	APVX_asymALL.push_back( -1 );
+	APVY_asymALL.push_back( iy );
+      } else {
+	gainfit->FixParameter( iy );
+      }
+    }
     
     for( int ix = 0; ix<nAPVmaxX; ix++ ){
+      
       for( int iy = 0; iy<nAPVmaxY; iy++ ){
 	TH1D *htemp = ( (TH1D*) (*hADCasym_vs_APVXY)[iy + nAPVmaxY*ix + nAPVmaxY*nAPVmaxX*i] );
 
+	
+	
+	weightX[iy][ix] = htemp->GetEntries();
+	weightY[ix][iy] = htemp->GetEntries();
+	
 	if( htemp->GetEntries() >= 100 ){
+
+	  countY[ix]++;
+	  countX[iy]++;
+	  
 	  double Amean = htemp->GetMean();
 	  double dAmean = htemp->GetMeanError();
 
