@@ -75,7 +75,7 @@ maxstripsperclusterY 9
 maxcor_threshold  -1.1
 stripcor_threshold  -1.1
 clustcor_threshold -1.1
-clust2D_ADCasymcut 1.1 
+clust2D_ADCasymcut 0.3
 clust2D_dTcut 30.0
 threshold_maxsample 50.0
 threshold_stripsum 250.0
@@ -93,8 +93,8 @@ NMAX 100000000
 #NMAX 20000
 #clustmap_fname HallA_allevents_with_moments.root
 TrackingAlgorithm 2
-eventdisplay 0
-firstevent 0
+eventdisplay 1
+firstevent 250010
 maxneighborsx 5
 maxneighborsy 5
 maxhitcombos 10000

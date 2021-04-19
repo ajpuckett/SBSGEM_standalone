@@ -143,8 +143,9 @@ void plot_GEMrun_summary(const char *filename, int nlayers=4, int nmodules=12, d
   TH2D *hClust2D_ADCasym_vs_ADCavg, *hTrackXresid_vs_layer, *hTrackYresid_vs_layer, *hTrackXresid_vs_module, *hTrackYresid_vs_module, *hTrackXY;
   TH2D *hTrackXeresid_vs_layer, *hTrackYeresid_vs_layer, *hTrackXeresid_vs_module, *hTrackYeresid_vs_module;
 
-  TH1D *hNtracks_nocuts;
-  
+  TH1D *hNtracks_nocuts,*hNtracks_GoodScintAndCALO;
+
+  fin->GetObject( "hNtracks_GoodScintAndCALO", hNtracks_GoodScintAndCALO );
   fin->GetObject( "hClust2D_ADCdiff", hClust2D_ADCdiff );
   fin->GetObject( "hNtracks_found", hNtracks_found );
   fin->GetObject( "hNtracks_nocuts", hNtracks_nocuts );
@@ -275,6 +276,8 @@ void plot_GEMrun_summary(const char *filename, int nlayers=4, int nmodules=12, d
   double effavg = 1.0-hNtracks_found->GetBinContent(1)/hNtracks_found->GetEntries();
 
   double eff_nocuts = 1.0-hNtracks_nocuts->GetBinContent(1)/hNtracks_nocuts->GetEntries();
+
+  double eff_scint_and_calo = 1.0- hNtracks_GoodScintAndCALO->GetBinContent(1)/hNtracks_GoodScintAndCALO->GetEntries();
   
   TString htitle;
   //hNtracks_found->SetTitle( htitle.Format( "Average track finding efficiency = %6.3g %%", effavg*100.0 ) );
@@ -287,15 +290,22 @@ void plot_GEMrun_summary(const char *filename, int nlayers=4, int nmodules=12, d
   hNtracks_found->Draw();
   hNtracks_nocuts->Draw("SAME");
 
+  if( CALOCUT > 0.0 ){
+    hNtracks_GoodScintAndCALO->SetLineColor(kGreen+1);
+    hNtracks_GoodScintAndCALO->Draw("SAME");
+  }
+  
   TLegend *legNtr = new TLegend(0.4,0.4,0.9,0.9);
   legNtr->SetTextFont(62);
   legNtr->SetFillStyle(0);
   legNtr->SetBorderSize(0);
   legNtr->SetMargin(0.12);
-
+  
   TString sentry;
   legNtr->AddEntry( hNtracks_found, sentry.Format("#geq 3-layer efficiency = %6.3g %%", effavg*100.0), "l");
-  legNtr->AddEntry( hNtracks_nocuts, sentry.Format("all trigger efficiency = %6.3g %%", eff_nocuts*100.0), "l" ); 
+  legNtr->AddEntry( hNtracks_nocuts, sentry.Format("all trigger efficiency = %6.3g %%", eff_nocuts*100.0), "l" );
+  if( CALOCUT > 0.0 ) legNtr->AddEntry( hNtracks_GoodScintAndCALO, sentry.Format("good scint+calo efficiency = %6.3g %%", 100.*eff_scint_and_calo), "l" );
+  
   legNtr->Draw();
   
   c1->cd(2);

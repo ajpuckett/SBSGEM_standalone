@@ -121,4 +121,6 @@ NMAX 20000
 TrackingAlgorithm 2
 maxhitcombos 10000
 NMAX 10000000
+eventdisplay 1
+firstevent 15000
 endconfig

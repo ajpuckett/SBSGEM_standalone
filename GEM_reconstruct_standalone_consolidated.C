@@ -6504,6 +6504,12 @@ void GEM_reconstruct_standalone_consolidated( const char *filename, const char *
       if( eventdisplaymode != 0 ){
 
 	cout << "starting event display, ievent = " << nevent << endl;
+
+	c2x->Clear();
+	c2x->Divide( maxnmodperlayer, nlayers, .001, .001 );
+	
+	c2y->Clear();
+	c2y->Divide( maxnmodperlayer, nlayers, .001, .001 );
 	
 	TLine Ltemp;
 
@@ -6799,11 +6805,18 @@ void GEM_reconstruct_standalone_consolidated( const char *filename, const char *
 	    
 	  }
 
+	  
+	  
 	  //Now let's draw the strip ADC histograms:
 	  c2x->cd(module_ipad[module]);
-	  ( (TH1D*) (*hmod_ADC_vs_Xstrip)[module] )->Draw("hist");
+	  ( (TH1D*) (*hmod_ADC_vs_Xstrip)[module] )->DrawCopy("hist");
+	  gPad->Modified();
 	  c2y->cd(module_ipad[module]);
-	  ( (TH1D*) (*hmod_ADC_vs_Ystrip)[module] )->Draw("hist");
+	  ( (TH1D*) (*hmod_ADC_vs_Ystrip)[module] )->DrawCopy("hist");
+	  gPad->Modified();
+	  
+	  c2x->Update();
+	  c2y->Update();
 	  
 	}
 	// hframe1->SetMinimum(0);
@@ -6922,6 +6935,8 @@ void GEM_reconstruct_standalone_consolidated( const char *filename, const char *
 		
 		c2x->cd( module_ipad[module] );
 		MstripADC.DrawMarker( istripx,xADC );
+		c2x->Update();
+		gPad->Modified();
 		stripcount++;
 		//( (*TH1D) (*hmod_ADC_vs_Xstrip_good)[module] )->Fill( istripx, xADC );
 	      }
@@ -6938,6 +6953,8 @@ void GEM_reconstruct_standalone_consolidated( const char *filename, const char *
 
 		c2y->cd( module_ipad[module] );
 		MstripADC.DrawMarker( istripy,yADC );
+		c2y->Update();
+		gPad->Modified();
 		stripcount++;
 	      }
 
