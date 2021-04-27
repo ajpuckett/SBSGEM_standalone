@@ -2418,11 +2418,13 @@ void new_find_tracks(map<int,clusterdata_t> mod_clusters, trackdata_t &trackdata
     vector<pair<int, int>> layerconfig;
     layerconfig.clear();
     //cout<<"size of grid container "<<gridContainer.size()<<endl;
-    for (int i = gridContainer.size(); i >= TOTAL_REQUIRED_HIT; i--){
+    for (int i = gridContainer.size(); i >= TOTAL_REQUIRED_HIT; i--){ //this is figuring out
+      //the minimum hit requirement.
     
         map<int,vector<vector<int> > >::iterator it = layercombos.find(i);
         
         if (it == layercombos.end()){
+	  //it shouldn't be possible to end up here
             cout<<"layercombos does not contain any combo with required hit "<<i<<endl;
             continue;
         }
@@ -3639,7 +3641,7 @@ void find_tracks( map<int,clusterdata_t> mod_clusters, trackdata_t &trackdata ){
 		      int khit_best=-1;
 		      double minresid2 = 0.0;
 
-		      ontrack[layer] = true; //initialize ontrack for this layer to false in order to avoid undefined behavior
+		      ontrack[layer] = false; 
 		    
 		      int modbest, hitbest=-1;
 		      double xbest,ybest,zbest;
@@ -3678,6 +3680,7 @@ void find_tracks( map<int,clusterdata_t> mod_clusters, trackdata_t &trackdata ){
 			int binytest_lo = binytest, binytest_hi = binytest;
 
 			//If we are within 3 mm of the edge of the bin, test neighboring bins as well:
+			//TODO: don't hard-code this value
 			if( binxdiff < 3.0 && binxtest > 0 ) binxtest_lo = binxtest-1;
 			if( gridxbinwidth - binxdiff < 3.0 && binxtest + 1 < gridnbinsx_layer[layer] ) binxtest_hi = binxtest+1;
 			if( binydiff < 3.0 && binytest > 0 ) binytest_lo = binytest-1;
@@ -3718,6 +3721,7 @@ void find_tracks( map<int,clusterdata_t> mod_clusters, trackdata_t &trackdata ){
 				xbest = xhitk;
 				ybest = yhitk;
 				zbest = zhitk;
+				minresid2 = resid2hit;
 			      }
 			      
 			    } //end loop over unused hits in grid XY bin

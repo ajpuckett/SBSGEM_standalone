@@ -148,7 +148,7 @@ reusestripsflag 1
 TrackingAlgorithm 2
 maxneighborsx 5
 maxneighborsy 4
-maxhitcombos 10000
-firstevent 1002
-eventdisplay 1
+maxhitcombos 20000
+firstevent 0
+eventdisplay 0
 endconfig
