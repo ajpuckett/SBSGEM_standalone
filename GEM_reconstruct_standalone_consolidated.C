@@ -83,6 +83,9 @@ int maxnstripYpercluster=7;
 int maxneighborsX=4; //+/-4 around local maximum:
 int maxneighborsY=4; //+/-3 around local maximum:
 
+int maxnx_coord=2; //+/-2 around local maximum for position reconstruction
+int maxny_coord=2; //+/-2 around local maximum for position reconstruction
+
 //Defaults are to keep all strips even if the max occurs in the "wrong" time sample:
 int sampmin_accept = -1; //If max ADC occurs below this bin, reject strip
 int sampmax_accept = 6;  //If max ADC occurs above this bin, reject strip
@@ -885,8 +888,8 @@ int find_clusters_by_module_newnew( moduledata_t mod_data, clusterdata_t &clust_
   //and then come up with a formula for assigning a fractional contribution of each nearby local maximum to each strip
   //How would we do this?
   //loop over all the strips
-  //Count and collect a list of all local maxima within +/- maxneighbors of each strip
-  //If we treat each local maximum as a separate hit, then
+  // Count and collect a list of all local maxima within +/- maxneighbors of each strip
+  // If we treat each local maximum as a separate hit, then
   // For each local maximum within +/- maxneighbors of any given strip,
   // which happens to be in a contiguous grouping with that strip, estimate a fractional contribution to that strip signal:
   //the contribution should be proportional to the ADC value of the nearby maximum, and should fall off with distance
@@ -923,7 +926,8 @@ int find_clusters_by_module_newnew( moduledata_t mod_data, clusterdata_t &clust_
     
 
     double sumx = 0.0, sumx2 = 0.0, sumADC = 0.0, sumt = 0.0, sumt2 = 0.0;
-
+    double sumwx = 0.0;
+    
     map<int,double> splitfraction;
 
     splitfraction.clear();
@@ -957,10 +961,15 @@ int find_clusters_by_module_newnew( moduledata_t mod_data, clusterdata_t &clust_
       double tstrip = mod_data.Tmean_xstrips[istrip];
 
       stripADCsum[istrip-striplo] = ADCstrip;
-      
-      sumx += ulocal * ADCstrip;
+         
       sumADC += ADCstrip;
-      sumx2 += pow(ulocal,2)*ADCstrip;
+
+      //For coordinate reconstruction, use a more restricted range of strips around the peak:
+      if( abs( istrip - stripmax ) <= std::max(1,std::min(maxnx_coord, maxneighborsX) ) ){
+	sumx += ulocal * ADCstrip;
+	sumx2 += pow(ulocal,2)*ADCstrip;
+	sumwx += ADCstrip;
+      }
       sumt += tstrip * ADCstrip;
       sumt2 += pow(tstrip,2)*ADCstrip;
    
@@ -976,8 +985,8 @@ int find_clusters_by_module_newnew( moduledata_t mod_data, clusterdata_t &clust_
       clust_data.ixstriphi.push_back( striphi );
       clust_data.ixstripmax.push_back( stripmax );
       
-      clust_data.xmean.push_back( sumx / sumADC );
-      clust_data.xsigma.push_back( sqrt( sumx2/sumADC - pow(sumx/sumADC,2) ) );
+      clust_data.xmean.push_back( sumx / sumwx );
+      clust_data.xsigma.push_back( sqrt( sumx2/sumwx - pow(sumx/sumwx,2) ) );
       clust_data.totalchargex.push_back( sumADC );
       clust_data.txmean.push_back( sumt / sumADC );
       clust_data.txsigma.push_back( sqrt( sumt2/sumADC - pow( sumt/sumADC, 2 ) ) );
@@ -1138,7 +1147,8 @@ int find_clusters_by_module_newnew( moduledata_t mod_data, clusterdata_t &clust_
    
 
     double sumy = 0.0, sumy2 = 0.0, sumADC = 0.0, sumt = 0.0, sumt2 = 0.0;
-
+    double sumwy = 0.0;
+    
     map<int,double> splitfraction;
 
     splitfraction.clear();
@@ -1172,9 +1182,14 @@ int find_clusters_by_module_newnew( moduledata_t mod_data, clusterdata_t &clust_
 
       stripADCsum[istrip-striplo] = ADCstrip;
       
-      sumy += vlocal * ADCstrip;
+      
       sumADC += ADCstrip;
-      sumy2 += pow(vlocal,2)*ADCstrip;
+      //use a (potentially) more restricted range of strips around the peak for coordinate reconstruction; this is shown to lead to better resolution at high rate:
+      if( abs( istrip - stripmax ) <= std::max(1,std::min(maxny_coord,maxneighborsY) ) ){
+	sumy += vlocal * ADCstrip;
+	sumy2 += pow(vlocal,2)*ADCstrip;
+	sumwy += ADCstrip;
+      }
       sumt += tstrip * ADCstrip;
       sumt2 += pow(tstrip,2)*ADCstrip;
    
@@ -1189,8 +1204,8 @@ int find_clusters_by_module_newnew( moduledata_t mod_data, clusterdata_t &clust_
       clust_data.iystriphi.push_back( striphi );
       clust_data.iystripmax.push_back( stripmax );
       
-      clust_data.ymean.push_back( sumy / sumADC );
-      clust_data.ysigma.push_back( sqrt( sumy2/sumADC - pow(sumy/sumADC,2) ) );
+      clust_data.ymean.push_back( sumy / sumwy );
+      clust_data.ysigma.push_back( sqrt( sumy2/sumwy - pow(sumy/sumwy,2) ) );
       clust_data.totalchargey.push_back( sumADC );
       clust_data.tymean.push_back( sumt / sumADC );
       clust_data.tysigma.push_back( sqrt( sumt2/sumADC - pow( sumt/sumADC, 2 ) ) );
@@ -4135,11 +4150,21 @@ void GEM_reconstruct_standalone_consolidated( const char *filename, const char *
 	    maxneighborsX = stemp.Atoi();
 	  }
 
-	   if( skey == "maxneighborsy" ){
+	  if( skey == "maxneighborsy" ){
 	    TString stemp = ( (TObjString*) (*tokens)[1] )->GetString();
 	    //maxnhitcombinations = stemp.Atoi();
 	    maxneighborsY = stemp.Atoi();
-	   }
+	  }
+
+	  if( skey == "maxnx_coord" ){
+	    TString stemp = ( (TObjString*) (*tokens)[1] )->GetString();
+	    maxnx_coord = stemp.Atoi();
+	  }
+
+	  if( skey == "maxny_coord" ){
+	    TString stemp = ( (TObjString*) (*tokens)[1] )->GetString();
+	    maxny_coord = stemp.Atoi();
+	  }
 	  
 	  if( skey == "maxhitcombos" ){
 	    TString stemp = ( (TObjString*) (*tokens)[1] )->GetString();

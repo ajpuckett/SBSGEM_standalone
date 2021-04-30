@@ -145,6 +145,9 @@ void GEM_align( const char *inputfilename, const char *configfilename, const cha
   double sigma_hitpos=0.14; //mm
 
   double minchi2change = 2.e-4;
+
+  double minposchange = 5e-3; // 5 um
+  double minanglechange = 5e-5; // 50 urad
   
   //Copied from GEM_reconstruct: For this routine we are only interested in the number of layers and the number of modules, and the geometrical information:
   if( configfile ){
@@ -159,6 +162,16 @@ void GEM_align( const char *inputfilename, const char *configfilename, const cha
 	if( ntokens >= 2 ){
 	  TString skey = ( (TObjString*) (*tokens)[0] )->GetString();
 
+	  if( skey == "minposchange" ){
+	    TString stemp = ( (TObjString*) (*tokens)[1] )->GetString();
+	    minposchange = stemp.Atof();
+	  }
+
+	  if( skey == "minanglechange" ){
+	    TString stemp = ( (TObjString*) (*tokens)[1] )->GetString();
+	    minanglechange = stemp.Atof();
+	  }
+	  
 	  if( skey == "minchi2change" ){
 	    TString stemp = ( (TObjString*) (*tokens)[1] )->GetString();
 	    minchi2change = stemp.Atof();
@@ -444,12 +457,24 @@ void GEM_align( const char *inputfilename, const char *configfilename, const cha
   double oldchi2cut = trackchi2_cut;
   //double resid_cut = 100.0; //mm
   //double resid2_sum = 0.0;
+
+  double maxresid = 1.0; //mm
+
+  double ndf_max = 2.0*nlayers-4;
+  
+  double minchi2cut = pow( maxresid/0.1, 2 ); //smallest cut on chi2/dof that we are allowed to use:
+
+  double meanchi2 = 10000.0;
+  double oldmeanchi2 = meanchi2;
+
+  double maxposchange=1e9, maxanglechange=1e9;
   
   for( int iter=0; iter<=niter; iter++ ){
 
     //at beginning of each iteration check:
     //if this is not the first iteration, cut short if chi2 stops improving:
-    if( iter > 0 && fabs( trackchi2_cut/oldchi2cut - 1. ) <= minchi2change ) niter = iter;
+    if( iter > 0 && fabs( 1. - meanchi2/oldmeanchi2 ) <= minchi2change ) niter = iter;
+    if( maxposchange < minposchange && maxanglechange < minanglechange ) niter = iter;
     
     nevent=0;
     
@@ -554,7 +579,8 @@ void GEM_align( const char *inputfilename, const char *configfilename, const cha
     //   rotationsonlyflag = false;
     // }
 
-    cout << "Starting linearized alignment procedure, iteration = " << iter << ", chi2/dof cut = " << trackchi2_cut << endl;
+    cout << "Starting linearized alignment procedure, iteration = " << iter << ", chi2/dof cut = " << trackchi2_cut
+	 << ", mean chi2 = " << meanchi2 << ", old mean chi2 = " << oldmeanchi2 << endl;
     
     if( iter == niter ){ //only fill these arrays on the last iteration:
       NTRACKS = 0;
@@ -786,8 +812,11 @@ void GEM_align( const char *inputfilename, const char *configfilename, const cha
       }
     }
 
+    oldmeanchi2 = meanchi2;
+    meanchi2 = trackchi2_sum/ntracks_passed;
+
     oldchi2cut = trackchi2_cut;
-    trackchi2_cut = 3.0*trackchi2_sum/ntracks_passed;
+    trackchi2_cut = std::max(minchi2cut,5.0*meanchi2);
 
     cout << endl << "Number of tracks passing chi2 cut = " << ntracks_passed << endl << endl;
     
@@ -1074,6 +1103,10 @@ void GEM_align( const char *inputfilename, const char *configfilename, const cha
 	   << mod_x0[module] << ", " << mod_y0[module] << ", " << mod_z0[module] << ", "
 	   << mod_ax[module] << ", " << mod_ay[module] << ", " << mod_az[module] << ")" << endl;
     }
+
+    maxposchange = 0.0;
+    maxanglechange = 0.0;
+    
     for( map<int,double>::iterator imod=mod_x0.begin(); imod!=mod_x0.end(); ++imod ){
       int module = imod->first;
       cout << "(Change from previous)/sigma: (dx0,dy0,dz0,dax,day,daz)=("
@@ -1083,7 +1116,26 @@ void GEM_align( const char *inputfilename, const char *configfilename, const cha
 	   << (mod_ax[module]-prev_ax[module])/mod_dax[module] << ", "
 	   << (mod_ay[module]-prev_ay[module])/mod_day[module] << ", "
 	   << (mod_az[module]-prev_az[module])/mod_daz[module] << ")" << endl;
+
+      TVector3 poschange(mod_x0[module] - prev_x0[module],
+			 mod_y0[module] - prev_y0[module],
+			 mod_z0[module] - prev_z0[module] );
+
+      TVector3 anglechange( mod_ax[module] - prev_ax[module],
+			    mod_ay[module] - prev_ay[module],
+			    mod_az[module] - prev_az[module] );
+
+      maxposchange = fabs( poschange.X() ) > maxposchange ? poschange.X() : maxposchange;
+      maxposchange = fabs( poschange.Y() ) > maxposchange ? poschange.Y() : maxposchange;
+      maxposchange = fabs( poschange.Z() ) > maxposchange ? poschange.Z() : maxposchange;
+
+      maxanglechange = fabs( anglechange.X() ) > maxanglechange ? anglechange.X() : maxanglechange;
+      maxanglechange = fabs( anglechange.Y() ) > maxanglechange ? anglechange.Y() : maxanglechange;
+      maxanglechange = fabs( anglechange.Z() ) > maxanglechange ? anglechange.Z() : maxanglechange;
     }
+
+    cout << "iteration " << iter << ", max position change = " << maxposchange << " mm, max angle change = " << maxanglechange << " rad" << endl;
+    
   }
 
   // cout << "NTRACKS = " << NTRACKS << ", XTRACK.size() = " << XTRACK.size()
