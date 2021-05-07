@@ -102,6 +102,8 @@ void GainRatios( const char *infilename, int nmodules, double chi2cut=100.0, dou
 
   ofstream outfile(outfilename.Data());
 
+  ofstream outfile_db("dbtempGainRatios.dat");
+  
   nAPVmaxX = nstripxmax/128;
   if( nstripxmax % 128 > 0 ) nAPVmaxX++;
 
@@ -317,6 +319,9 @@ void GainRatios( const char *infilename, int nmodules, double chi2cut=100.0, dou
 
     countX.resize(nAPVmaxY);
     countY.resize(nAPVmaxX); 
+
+    xAPV_ref = -1;
+    double maxnevent = 0.0;
     
     //Card-average asymmetries:
     for( int ix=0; ix<nAPVmaxX; ix++ ){
@@ -326,6 +331,12 @@ void GainRatios( const char *infilename, int nmodules, double chi2cut=100.0, dou
       
       TH1D *htemp = ( (TH1D*) (*hADCasym_vs_APVX)[ix+nAPVmaxX*i] );
       if( htemp->GetEntries() >= 100 ){
+
+	if( xAPV_ref < 0 || htemp->GetEntries() > maxnevent ){
+	  xAPV_ref = ix;
+	  maxnevent = htemp->GetEntries();
+	}
+	
 	double Amean = htemp->GetMean();
 	double dAmean = htemp->GetMeanError();
 
@@ -368,6 +379,9 @@ void GainRatios( const char *infilename, int nmodules, double chi2cut=100.0, dou
       }
     }
 
+    //always fix the gain of the X APV with largest statistics to 1, to fix the absolute normalization
+    gainfit->FixParameter( xAPV_ref + nAPVmaxY );
+    
     for( int iy=0; iy<nAPVmaxY; iy++ ){
       weightX[iy].resize( nAPVmaxX );
 
@@ -498,7 +512,14 @@ void GainRatios( const char *infilename, int nmodules, double chi2cut=100.0, dou
     
     //First calculate all the Y gains relative to the reference x APV
 
+    
+    
     outfile << "mod_Ygain  " << i << "   " << nAPVmaxY << "     ";
+
+    TString varname;
+    varname.Form("sbs.uvagem.m%d.vgain = ",i);
+
+    outfile_db << varname;
     
     for( int iy=0; iy<nAPVmaxY; iy++ ){
       int yidx= iy + nAPVmaxY * xAPV_ref;
@@ -514,10 +535,15 @@ void GainRatios( const char *infilename, int nmodules, double chi2cut=100.0, dou
       cout << "module " << i << ", Y APV " << iy << ", Relative gain = " << Ygain.back() << " +/- " << dYgain.back() << endl;
 
       outfile << Ygain.back() << "  ";
+      outfile_db << Ygain.back() << "  ";
     }
     outfile << endl;
-
+    outfile_db << endl;
+    
     outfile << "mod_Xgain  " << i << "   " << nAPVmaxX << "     ";
+    varname.Form("sbs.uvagem.m%d.ugain = ",i);
+
+    outfile_db << varname;
     
     for( int ix=0; ix<nAPVmaxX; ix++ ){
 
@@ -559,13 +585,14 @@ void GainRatios( const char *infilename, int nmodules, double chi2cut=100.0, dou
       cout << "module " << i << ", X APV " << ix << ", Relative gain = " << Xgain.back() << " +/- " << dXgain.back() << endl;
 
       outfile << Xgain.back() << "  ";
-      
+      outfile_db << Xgain.back() << "  ";
     }
     outfile << endl;
-    
+    outfile_db << endl;
   }
 
   outfile << endl;
+  outfile_db << endl;
 
   fout->Write();
 

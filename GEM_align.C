@@ -1196,6 +1196,9 @@ void GEM_align( const char *inputfilename, const char *configfilename, const cha
   
   ofstream outfile(outputfilename);
 
+  //Also write the alignment stuff in the format that the SBS-offline database wants:
+  ofstream outfile_DB("dbtemp_example.dat");
+  
   //outfile << "mod_x0 ";
   TString x0line = "mod_x0 ", y0line="mod_y0 ", z0line = "mod_z0 ";
   TString axline = "mod_ax ", ayline="mod_ay ", azline = "mod_az ";
@@ -1214,6 +1217,16 @@ void GEM_align( const char *inputfilename, const char *configfilename, const cha
     ayline += stemp;
     stemp.Form( " %15.6g", mod_az[module] );
     azline += stemp;
+
+    stemp.Form( "sbs.uvagem.m%d.position = %15.6g %15.6g %15.6g", module,
+		mod_x0[module]/1000.0, mod_y0[module]/1000.0, mod_z0[module]/1000.0 );
+
+    outfile_DB << stemp << endl;
+
+    stemp.Form( "sbs.uvagem.m%d.angle = %15.6g %15.6g %15.6g", module,
+		mod_ax[module]*180.0/PI, mod_ay[module]*180.0/PI, mod_az[module]*180.0/PI );
+
+    outfile_DB << stemp << endl;
   }
   outfile << x0line << endl;
   outfile << y0line << endl;
