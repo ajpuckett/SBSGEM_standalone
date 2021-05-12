@@ -471,10 +471,13 @@ void GEM_align( const char *inputfilename, const char *configfilename, const cha
   
   for( int iter=0; iter<=niter; iter++ ){
 
+    cout << "starting iteration " << iter << ", maxpos change = " << maxposchange
+	 << ", max angle change = " << maxanglechange << ", meanchi2/old mean chi2 = "
+	 << meanchi2/oldmeanchi2 << endl;
     //at beginning of each iteration check:
     //if this is not the first iteration, cut short if chi2 stops improving:
     if( iter > 0 && fabs( 1. - meanchi2/oldmeanchi2 ) <= minchi2change ) niter = iter;
-    if( maxposchange < minposchange && maxanglechange < minanglechange ) niter = iter;
+    if( fabs(maxposchange) < minposchange && fabs(maxanglechange) < minanglechange ) niter = iter;
     
     nevent=0;
     
@@ -1125,13 +1128,13 @@ void GEM_align( const char *inputfilename, const char *configfilename, const cha
 			    mod_ay[module] - prev_ay[module],
 			    mod_az[module] - prev_az[module] );
 
-      maxposchange = fabs( poschange.X() ) > maxposchange ? poschange.X() : maxposchange;
-      maxposchange = fabs( poschange.Y() ) > maxposchange ? poschange.Y() : maxposchange;
-      maxposchange = fabs( poschange.Z() ) > maxposchange ? poschange.Z() : maxposchange;
+      maxposchange = fabs( poschange.X() ) > maxposchange ? fabs( poschange.X() ) : maxposchange;
+      maxposchange = fabs( poschange.Y() ) > maxposchange ? fabs( poschange.Y() ) : maxposchange;
+      maxposchange = fabs( poschange.Z() ) > maxposchange ? fabs( poschange.Z() ) : maxposchange;
 
-      maxanglechange = fabs( anglechange.X() ) > maxanglechange ? anglechange.X() : maxanglechange;
-      maxanglechange = fabs( anglechange.Y() ) > maxanglechange ? anglechange.Y() : maxanglechange;
-      maxanglechange = fabs( anglechange.Z() ) > maxanglechange ? anglechange.Z() : maxanglechange;
+      maxanglechange = fabs( anglechange.X() ) > maxanglechange ? fabs( anglechange.X() ): maxanglechange;
+      maxanglechange = fabs( anglechange.Y() ) > maxanglechange ? fabs( anglechange.Y() ) : maxanglechange;
+      maxanglechange = fabs( anglechange.Z() ) > maxanglechange ? fabs( anglechange.Z() ) : maxanglechange;
     }
 
     cout << "iteration " << iter << ", max position change = " << maxposchange << " mm, max angle change = " << maxanglechange << " rad" << endl;

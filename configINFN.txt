@@ -76,6 +76,14 @@ mod_z0          765.311         765.603         765.068        -1.43251         
 mod_ax      -0.00165859     -0.00226304     -0.00232085     0.000423162      0.00237697      0.00153331      0.00104892      0.00189396      0.00105727     -0.00163457     9.83663e-06     0.000116854
 mod_ay      0.000854345     0.000790437    -1.27052e-05      -0.0015089      0.00166494      0.00170374     -0.00172768    -0.000584401     -0.00438186      0.00103391     -0.00186977     0.000937007
 mod_az       0.00316865     0.000655944      0.00125604      -0.0079139     -0.00790398     -0.00693929      0.00954861       0.0110422      0.00787853     -0.00325216      -0.0024443     0.000678701
+#
+#
+mod_x0         -531.218         3.27852         539.425        -533.951               0         535.575          -539.8        -4.92964         531.822        -531.023         4.32312         539.414
+mod_y0         -4.30399       -0.726489          2.4424         2.03891               0        -1.46913        -4.11159         3.55794         10.4869        -9.38464        -7.83932        -5.91376
+mod_z0          757.227         757.871         758.037        -1.62566               0       -0.428251         1160.18         1162.17         1163.98          400.77          402.17          401.86
+mod_ax      -0.00313196     -0.00354754     -0.00325241      0.00118963               0      -0.0017669    -0.000265879     0.000717563     -0.00153697     -0.00191431     -0.00187577     -0.00102957
+mod_ay      0.000465532    -0.000236046     -0.00128965     -0.00225896               0    -9.43009e-05     -0.00252354     -0.00157102     -0.00475055     0.000103671     -0.00268506    -0.000844935
+mod_az       0.00756465      0.00585422      0.00544624     -0.00296742               0      -0.0021809       0.0134526       0.0155967       0.0116284      0.00152267      0.00358527      0.00503126
 # Gain:
 mod_Ygain  0   8     1.15544  1.15585  1.1276  1.18828  1.17945  1.12504  1.16594  1.04692  
 mod_Xgain  0   10     0.984818  0.917181  1.01624  1.01603  1.05704  1.03623  1.04627  1.01414  0.978688  1  
@@ -138,18 +146,20 @@ clust2D_dTcut 1000.0
 threshold_maxsample 50.0
 threshold_stripsum  200.0
 threshold_clustersum 500.0
-trackchi2cut 200.0
-trackmaxradius 30.0 # mm, max radial separation between hit and projection of track from previous layers to add hit to track.
+trackchi2cut 500.0
+trackmaxradius 100.0 # mm, max radial separation between hit and projection of track from previous layers to add hit to track.
 trackmaxslopeX 1.0
 trackmaxslopeY 0.35
 maxADCXYthreshold 5000.0
 tstripcut_nsigma 5.0
-NMAX 1000000
+NMAX 100000
 reusestripsflag 1
-TrackingAlgorithm 2
+TrackingAlgorithm 0
 maxneighborsx 5
 maxneighborsy 4
 maxhitcombos 20000
 firstevent 0
 eventdisplay 0
+#gridxbinwidth  20.0
+#gridybinwidth  20.0 
 endconfig
