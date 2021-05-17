@@ -468,6 +468,8 @@ void GEM_align( const char *inputfilename, const char *configfilename, const cha
   double oldmeanchi2 = meanchi2;
 
   double maxposchange=1e9, maxanglechange=1e9;
+  double oldmaxposchange = maxposchange;
+  double oldmaxanglechange = maxanglechange;
   
   for( int iter=0; iter<=niter; iter++ ){
 
@@ -478,6 +480,9 @@ void GEM_align( const char *inputfilename, const char *configfilename, const cha
     //if this is not the first iteration, cut short if chi2 stops improving:
     if( iter > 0 && fabs( 1. - meanchi2/oldmeanchi2 ) <= minchi2change ) niter = iter;
     if( fabs(maxposchange) < minposchange && fabs(maxanglechange) < minanglechange ) niter = iter;
+    if( fabs(maxposchange) > oldmaxposchange && fabs(maxanglechange) > oldmaxanglechange ) niter = iter;
+
+    if( meanchi2/oldmeanchi2 > 1.0 ) niter = iter;
     
     nevent=0;
     
@@ -1107,6 +1112,9 @@ void GEM_align( const char *inputfilename, const char *configfilename, const cha
 	   << mod_ax[module] << ", " << mod_ay[module] << ", " << mod_az[module] << ")" << endl;
     }
 
+    oldmaxposchange = fabs(maxposchange);
+    oldmaxanglechange = fabs(maxanglechange);
+    
     maxposchange = 0.0;
     maxanglechange = 0.0;
     

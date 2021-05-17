@@ -4131,12 +4131,12 @@ void GEM_reconstruct_standalone_consolidated( const char *filename, const char *
 	  
 	  if( skey == "gridxbinwidth" ){
 	    TString stemp = ( (TObjString*) (*tokens)[1] )->GetString();
-	    gridxbinwidth = skey.Atof();
+	    gridxbinwidth = stemp.Atof();
 	  }
 
 	  if( skey == "gridybinwidth" ){
 	    TString stemp = ( (TObjString*) (*tokens)[1] )->GetString();
-	    gridybinwidth = skey.Atof();
+	    gridybinwidth = stemp.Atof();
 	  }
 	  
 	  if( skey == "firstevent" ){
@@ -4781,32 +4781,46 @@ void GEM_reconstruct_standalone_consolidated( const char *filename, const char *
     if( mod_RYX.find( imodule ) == mod_RYX.end() ) mod_RYX[imodule] = 1.0;
   }
 
+  gridxbinwidth = std::max(3.0, std::min(gridxbinwidth,100.0) );
+  gridybinwidth = std::max(3.0, std::min(gridybinwidth,100.0) );
+  
+  cout << "Initializing 2D grid bins per layer: " << endl;
+  cout << "Grid bin width (x,y) = (" << gridxbinwidth << ", " << gridybinwidth << ")" << endl;
   //calculate also grid for tracking speed improvement:
   for( int layer=0; layer<nlayers; layer++ ){
-    double xstart = xgmin_layer[layer]-gridxbinwidth;
+    cout << "layer = " << layer << endl;
+    
+    double xstart = xgmin_layer[layer]-0.5*gridxbinwidth;
     int nbinsx=0;
     //double xstop = xstart + nbinsx*gridxbinwidth;
-    while( xstart + nbinsx*gridxbinwidth <= xgmax_layer[layer]+gridxbinwidth ){ 
+    while( xstart + nbinsx*gridxbinwidth <= xgmax_layer[layer]+0.5*gridxbinwidth ){ 
       nbinsx++;
     }
 
+    cout << "nbinsx = " << nbinsx << endl;
+    
     double xstop = xstart + nbinsx*gridxbinwidth;
 
     gridnbinsx_layer[layer] = nbinsx;
     gridxmin_layer[layer] = xstart;
     gridxmax_layer[layer] = xstop;
     
-    double ystart = ygmin_layer[layer]-gridybinwidth;
+    double ystart = ygmin_layer[layer]-0.5*gridybinwidth;
     int nbinsy=0;
-    while( ystart + nbinsy*gridybinwidth <= ygmax_layer[layer]+gridybinwidth ){
+    while( ystart + nbinsy*gridybinwidth <= ygmax_layer[layer]+0.5*gridybinwidth ){
       nbinsy++;
     }
+
+    cout << "nbinsy = " << nbinsy << endl;
 
     double ystop = ystart + nbinsy*gridybinwidth;
 
     gridnbinsy_layer[layer] = nbinsy;
     gridymin_layer[layer] = ystart;
     gridymax_layer[layer] = ystop;
+
+    cout << "layer " << layer << ", grid x bin width = " << gridxbinwidth << " mm, grid y bin width = " << gridybinwidth << " mm, (nbinsx,nbinsy)=(" << gridnbinsx_layer[layer] << ", "
+	 << gridnbinsy_layer[layer] << ")" << endl;
     
   }
   
