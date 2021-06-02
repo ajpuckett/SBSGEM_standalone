@@ -3158,6 +3158,9 @@ void find_tracks_old( map<int,clusterdata_t> mod_clusters, trackdata_t &trackdat
 		    //double utracktemp = (xtrtemp+xptrtemp*zhittemp)*mod_Pxu[module] + (ytrtemp+yptrtemp*zhittemp)*mod_Pyu[module];
 		    //double vtracktemp = (xtrtemp+xptrtemp*zhittemp)*mod_Pxv[module] + (ytrtemp+yptrtemp*zhittemp)*mod_Pyv[module];
 
+		    //unclear if this calculation is exactly correct, but it is consistent with the way alignment is done
+		    // projecting the fitted track to the same z coordinate as the hit itself should be very, very nearly identical
+		    // to calculating the exact intersection point of the ray with the plane of the module active area
 		    TVector3 trackpos_global( xtrtemp+xptrtemp*zhittemp, ytrtemp+yptrtemp*zhittemp, zhittemp );
 		    TVector3 modcenter_global( mod_x0[module], mod_y0[module], mod_z0[module] );
 		   

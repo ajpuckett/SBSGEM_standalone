@@ -161,12 +161,12 @@ maxADCXYthreshold 5000.0
 tstripcut_nsigma 5.0
 NMAX 1000000
 reusestripsflag 1
-TrackingAlgorithm 2
+TrackingAlgorithm 1
 maxneighborsx 4
 maxneighborsy 4
 maxnx_coord 2
 maxny_coord 2
-maxhitcombos 20000
+maxhitcombos 10000
 firstevent 0
 eventdisplay 0
 gridxbinwidth 10.0
