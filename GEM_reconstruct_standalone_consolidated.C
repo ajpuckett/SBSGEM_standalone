@@ -5480,11 +5480,11 @@ void GEM_reconstruct_standalone_consolidated( const char *filename, const char *
   while( C->GetEntry(nevent++) && (NMAX < 0 || nevent-firstevent < NMAX ) ){
     /*if( nevent % 1000 == 0 )*/ //cout << nevent << endl;
 
-    EventID = evtID;
+    EventID = nevent-firstevent;
     
     if( (nevent-firstevent)%1000 == 0 ){
 
-      cout << "Processing event " << EventID << ", total event count = " << nevent << endl;
+      cout << "Processing event " << evtID << ", total event count = " << nevent << endl;
 
     }
     //Clustering and hit reconstruction:
